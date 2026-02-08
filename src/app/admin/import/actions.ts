@@ -1,0 +1,457 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
+import { normalizeHeader, parseCsv, parseNumber } from "@/lib/csv";
+import { parse as parseRaw } from "csv-parse/sync";
+
+function requireFile(formData: FormData, key: string): File {
+  const file = formData.get(key);
+  if (!file || !(file instanceof File) || file.size === 0) {
+    throw new Error("Upload a CSV file.");
+  }
+  return file;
+}
+
+function parseDate(value: string | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateFromFilename(name: string) {
+  const monthMap: Record<string, number> = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11,
+  };
+
+  const monthMatch = name.match(/([A-Za-z]{3})-(\d{1,2})-(\d{4})/);
+  if (monthMatch) {
+    const [, mon, day, year] = monthMatch;
+    const month = monthMap[mon.toLowerCase()];
+    if (month !== undefined) {
+      return new Date(Number(year), month, Number(day));
+    }
+  }
+
+  const isoMatch = name.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  const usMatch = name.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+  if (usMatch) {
+    const [, month, day, year] = usMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  return null;
+}
+
+async function findOrCreateMember({
+  id,
+  name,
+  email,
+}: {
+  id?: string | null;
+  name?: string | null;
+  email?: string | null;
+}) {
+  if (id) {
+    const member = await prisma.member.findUnique({ where: { id } });
+    if (member) return member;
+  }
+
+  if (email) {
+    const member = await prisma.member.findUnique({ where: { email } });
+    if (member) return member;
+  }
+
+  if (name) {
+    const member = await prisma.member.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+    });
+    if (member) return member;
+    return prisma.member.create({ data: { name, email } });
+  }
+
+  throw new Error("Each contribution must include member_id, member_name, or member_email.");
+}
+
+export async function importContributions(formData: FormData) {
+  const file = requireFile(formData, "contributions");
+  const text = await file.text();
+  const rows = parseCsv(text);
+
+  for (const row of rows) {
+    const date = parseDate(row.date);
+    const amount = parseNumber(row.amount);
+    const shares = parseNumber(row.shares);
+    const typeRaw = row.type?.toUpperCase();
+
+    if (!date || amount === null || shares === null) {
+      continue;
+    }
+
+    const member = await findOrCreateMember({
+      id: row.member_id,
+      name: row.member_name,
+      email: row.member_email,
+    });
+
+    await prisma.contribution.create({
+      data: {
+        memberId: member.id,
+        date,
+        amount,
+        shares,
+        type: typeRaw === "WITHDRAW" ? "WITHDRAW" : "BUY",
+        memo: row.memo || null,
+      },
+    });
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/import");
+}
+
+export async function createBtcPurchase(formData: FormData) {
+  const date = parseDate(formData.get("date")?.toString());
+  const btcAmount = parseNumber(formData.get("btcAmount")?.toString());
+  const usdAmount = parseNumber(formData.get("usdAmount")?.toString());
+  const btcPrice = parseNumber(formData.get("btcPrice")?.toString());
+
+  if (!date || btcAmount === null || usdAmount === null || btcPrice === null) {
+    throw new Error("All BTC fields are required.");
+  }
+
+  await prisma.btcPurchase.create({
+    data: {
+      date,
+      btcAmount,
+      usdAmount,
+      btcPrice,
+    },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/import");
+}
+
+export async function importBtcPurchases(formData: FormData) {
+  const file = requireFile(formData, "btc");
+  const text = await file.text();
+  const rows = parseCsv(text);
+
+  const headerMap: Record<string, string> = {};
+  if (rows[0]) {
+    const headers = Object.keys(rows[0]);
+    const normalized = headers.map(normalizeHeader);
+    function pick(target: string, options: string[]) {
+      const index = normalized.findIndex((header) => options.includes(header));
+      if (index >= 0) headerMap[target] = headers[index];
+    }
+
+    pick("date", ["date", "purchase date"]);
+    pick("btc_amount", ["btc_amount", "amount purchased (btc)"]);
+    pick("usd_amount", ["usd_amount", "amount purchased (usd)"]);
+    pick("btc_price", ["btc_price", "purchased at (btc/usd)"]);
+  }
+
+  for (const row of rows) {
+    const date = parseDate(row[headerMap.date || "date"] || row.date);
+    const btcAmount = parseNumber(row[headerMap.btc_amount || "btc_amount"] || row.btc_amount);
+    const usdAmount = parseNumber(row[headerMap.usd_amount || "usd_amount"] || row.usd_amount);
+    const btcPrice = parseNumber(row[headerMap.btc_price || "btc_price"] || row.btc_price);
+
+    if (!date || btcAmount === null || usdAmount === null || btcPrice === null) {
+      continue;
+    }
+
+    await prisma.btcPurchase.create({
+      data: {
+        date,
+        btcAmount,
+        usdAmount,
+        btcPrice,
+      },
+    });
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/import");
+}
+
+function getHeaderMap(headers: string[]) {
+  const normalized = headers.map(normalizeHeader);
+  const map: Record<string, string> = {};
+
+  function pick(target: string, options: string[]) {
+    const index = normalized.findIndex((header) => options.includes(header));
+    if (index >= 0) map[target] = headers[index];
+  }
+
+  pick("date", ["date", "trade date", "transaction date", "activity date", "run date"]);
+  pick("ticker", ["symbol", "ticker"]);
+  pick("action", ["action", "type", "transaction type"]);
+  pick("shares", ["quantity", "shares", "qty"]);
+  pick("price", ["price", "price per share", "price ($)"]);
+  pick("fees", ["fees", "commission", "commissions", "fees and commissions", "fees ($)"]);
+  pick("asset_type", ["asset type", "asset class", "security type", "type"]);
+
+  return map;
+}
+
+function parseAction(value: string | undefined) {
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  if (normalized.includes("bought") || normalized.includes("buy")) return "BUY";
+  if (normalized.includes("sold") || normalized.includes("sell")) return "SELL";
+  return null;
+}
+
+function inferAssetType(value: string | undefined, symbol?: string) {
+  const normalized = value?.toLowerCase() || "";
+  if (normalized.includes("etf")) return "ETF";
+  if (normalized.includes("crypto") || normalized.includes("btc")) return "CRYPTO";
+  if (normalized.includes("cash") && symbol && symbol.includes("SPAXX")) return "CASH";
+  return "STOCK";
+}
+
+export async function importTrades(formData: FormData) {
+  const file = requireFile(formData, "trades");
+  const text = await file.text();
+  const rows = parseCsv(text);
+  if (rows.length === 0) return;
+
+  const headers = Object.keys(rows[0]);
+  const map = getHeaderMap(headers);
+
+  if (!map.date || !map.ticker || !map.action || !map.shares || !map.price) {
+    throw new Error(
+      "Could not map required columns. Ensure the CSV includes Date, Symbol, Action, Quantity, and Price columns."
+    );
+  }
+
+  for (const row of rows) {
+    const date = parseDate(row[map.date]);
+    const action = parseAction(row[map.action]);
+    const shares = parseNumber(row[map.shares]);
+    const price = parseNumber(row[map.price]);
+
+    if (!date || !action || shares === null || price === null) {
+      continue;
+    }
+
+    await prisma.trade.create({
+      data: {
+        date,
+        ticker: row[map.ticker],
+        action,
+        shares,
+        price,
+        fees: parseNumber(map.fees ? row[map.fees] : undefined) || 0,
+        assetType: inferAssetType(map.asset_type ? row[map.asset_type] : undefined, row[map.ticker]),
+        notes: null,
+      },
+    });
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/import");
+}
+
+export async function importFidelityPositions(formData: FormData) {
+  const file = requireFile(formData, "positions");
+  const text = await file.text();
+  const rows = parseCsv(text);
+  if (rows.length === 0) return;
+
+  const asOfDateInput = formData.get("positionsDate")?.toString();
+  const asOfDate =
+    parseDate(asOfDateInput) || parseDateFromFilename(file.name) || new Date();
+
+  const headers = Object.keys(rows[0]);
+  const normalized = headers.map(normalizeHeader);
+  function pick(options: string[]) {
+    const index = normalized.findIndex((header) => options.includes(header));
+    return index >= 0 ? headers[index] : null;
+  }
+
+  const accountNumberKey = pick(["account number"]);
+  const accountNameKey = pick(["account name"]);
+  const symbolKey = pick(["symbol"]);
+  const descriptionKey = pick(["description"]);
+  const quantityKey = pick(["quantity", "qty", "shares"]);
+  const lastPriceKey = pick(["last price", "price"]);
+  const currentValueKey = pick(["current value", "market value", "mkt value"]);
+  const totalGainLossKey = pick(["total gain/loss dollar", "total gain/loss ($)"]);
+  const totalGainLossPercentKey = pick(["total gain/loss percent", "total gain/loss (%)"]);
+  const percentOfAccountKey = pick(["percent of account", "% of account", "% of portfolio"]);
+  const costBasisKey = pick(["cost basis total", "cost basis"]);
+  const avgCostKey = pick(["average cost basis", "avg cost basis", "average cost"]);
+  const typeKey = pick(["type", "asset type"]);
+
+  if (!symbolKey) {
+    throw new Error("Positions import requires a Symbol column.");
+  }
+
+  await prisma.positionSnapshot.deleteMany({ where: { date: asOfDate } });
+
+  for (const row of rows) {
+    const symbol = row[symbolKey]?.trim();
+    if (!symbol) continue;
+
+    await prisma.positionSnapshot.create({
+      data: {
+        date: asOfDate,
+        accountNumber: accountNumberKey ? row[accountNumberKey] : null,
+        accountName: accountNameKey ? row[accountNameKey] : null,
+        symbol,
+        description: descriptionKey ? row[descriptionKey] : null,
+        quantity: parseNumber(quantityKey ? row[quantityKey] : undefined),
+        lastPrice: parseNumber(lastPriceKey ? row[lastPriceKey] : undefined),
+        currentValue: parseNumber(currentValueKey ? row[currentValueKey] : undefined),
+        totalGainLoss: parseNumber(totalGainLossKey ? row[totalGainLossKey] : undefined),
+        totalGainLossPercent: parseNumber(
+          totalGainLossPercentKey ? row[totalGainLossPercentKey] : undefined
+        ),
+        percentOfAccount: parseNumber(
+          percentOfAccountKey ? row[percentOfAccountKey] : undefined
+        ),
+        costBasisTotal: parseNumber(costBasisKey ? row[costBasisKey] : undefined),
+        averageCostBasis: parseNumber(avgCostKey ? row[avgCostKey] : undefined),
+        assetType: typeKey ? row[typeKey] : null,
+      },
+    });
+  }
+
+  revalidatePath("/holdings");
+  revalidatePath("/admin/import");
+}
+
+export async function importFidelityHistory(formData: FormData) {
+  const file = requireFile(formData, "history");
+  const text = await file.text();
+  const rawRows: string[][] = parseRaw(text, { skip_empty_lines: true });
+  const headerIndex = rawRows.findIndex((row) =>
+    row.some((cell) => normalizeHeader(cell) === "run date")
+  );
+
+  if (headerIndex < 0) {
+    throw new Error("History import missing header row.");
+  }
+
+  const headers = rawRows[headerIndex].map(normalizeHeader);
+  const dataRows = rawRows.slice(headerIndex + 1);
+
+  function getCell(row: string[], key: string) {
+    const index = headers.findIndex((header) => header === key);
+    return index >= 0 ? row[index] : undefined;
+  }
+
+  for (const row of dataRows) {
+    const date = parseDate(getCell(row, "run date"));
+    const action = parseAction(getCell(row, "action"));
+    const symbol = getCell(row, "symbol")?.trim();
+    const shares = parseNumber(getCell(row, "quantity"));
+    const price = parseNumber(getCell(row, "price ($)"));
+
+    if (!date || !action || !symbol || shares === null || price === null) {
+      continue;
+    }
+
+    const commission = parseNumber(getCell(row, "commission ($)")) || 0;
+    const fees = parseNumber(getCell(row, "fees ($)")) || 0;
+
+    await prisma.trade.create({
+      data: {
+        date,
+        ticker: symbol,
+        action,
+        shares,
+        price,
+        fees: commission + fees,
+        assetType: inferAssetType(getCell(row, "type"), symbol),
+        notes: getCell(row, "action") || null,
+      },
+    });
+  }
+
+  revalidatePath("/holdings");
+  revalidatePath("/admin/import");
+}
+
+export async function importLivePrices(formData: FormData) {
+  const file = requireFile(formData, "livePrices");
+  const text = await file.text();
+  const rows: string[][] = parseRaw(text, { skip_empty_lines: false });
+
+  const headerIndex = rows.findIndex((row) =>
+    row.some((cell) => normalizeHeader(cell) === "symbol")
+  );
+  if (headerIndex < 0) {
+    throw new Error("Live prices file missing a Symbol header.");
+  }
+
+  const headers = rows[headerIndex].map((cell) => normalizeHeader(cell));
+  const dataRows = rows.slice(headerIndex + 1);
+
+  const asOfDateInput = formData.get("livePricesDate")?.toString();
+  const asOfDate =
+    parseDate(asOfDateInput) || parseDateFromFilename(file.name) || new Date();
+
+  function getCell(row: string[], key: string) {
+    const index = headers.findIndex((header) => header === key);
+    return index >= 0 ? row[index] : undefined;
+  }
+
+  await prisma.livePosition.deleteMany({ where: { date: asOfDate } });
+
+  for (const row of dataRows) {
+    const symbol = getCell(row, "symbol")?.trim();
+    if (!symbol) continue;
+
+    await prisma.livePosition.create({
+      data: {
+        date: asOfDate,
+        symbol,
+        quantity: parseNumber(getCell(row, "qty")),
+        asset: getCell(row, "asset") || null,
+        price: parseNumber(getCell(row, "price")),
+        cost: parseNumber(getCell(row, "cost")),
+        marketValue: parseNumber(getCell(row, "mkt value")),
+        gainDollar: parseNumber(getCell(row, "gain ($)")),
+        gainPercent: parseNumber(getCell(row, "gain (%)")),
+        percentOfPortfolio: parseNumber(getCell(row, "% of portfolio")),
+        term: getCell(row, "term") || null,
+        beta: parseNumber(getCell(row, "beta")),
+        pe: parseNumber(getCell(row, "p/e")),
+        weekHigh: parseNumber(getCell(row, "52 wk high")),
+        weekLow: parseNumber(getCell(row, "52 wk low")),
+        gain30: parseNumber(getCell(row, "30 day gain")),
+        gain60: parseNumber(getCell(row, "60 day gain")),
+        gain90: parseNumber(getCell(row, "90 day gain")),
+        weight: parseNumber(getCell(row, "weight")),
+        estPurchase: parseNumber(getCell(row, "est. purchase")),
+        sharesTarget: parseNumber(getCell(row, "# shares")),
+        rounded: parseNumber(getCell(row, "rounded")),
+        totalPurchase: parseNumber(getCell(row, "total purchase")),
+      },
+    });
+  }
+
+  revalidatePath("/holdings");
+  revalidatePath("/admin/import");
+}

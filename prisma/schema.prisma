@@ -1,0 +1,147 @@
+// Prisma schema for Yacht Club Tools
+// Note: uses PostgreSQL for Vercel deployment.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContributionType {
+  BUY
+  WITHDRAW
+}
+
+enum TradeAction {
+  BUY
+  SELL
+}
+
+enum AssetType {
+  STOCK
+  ETF
+  CRYPTO
+  CASH
+}
+
+model Member {
+  id        String           @id @default(cuid())
+  name      String
+  email     String?          @unique
+  joinedAt  DateTime         @default(now())
+  active    Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  contributions Contribution[]
+}
+
+model Contribution {
+  id        String           @id @default(cuid())
+  memberId  String
+  date      DateTime
+  amount    Decimal          @db.Decimal(18, 2)
+  shares    Decimal          @db.Decimal(18, 6)
+  type      ContributionType @default(BUY)
+  memo      String?
+  createdAt DateTime         @default(now())
+
+  member    Member           @relation(fields: [memberId], references: [id])
+
+  @@index([date])
+  @@index([memberId, date])
+}
+
+model PortfolioSnapshot {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  totalValue  Decimal  @db.Decimal(18, 2)
+  cashValue   Decimal  @db.Decimal(18, 2)
+  btcPrice    Decimal  @db.Decimal(18, 2)
+  sp500Value  Decimal  @db.Decimal(18, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model BtcPurchase {
+  id        String   @id @default(cuid())
+  date      DateTime
+  btcAmount Decimal  @db.Decimal(18, 8)
+  usdAmount Decimal  @db.Decimal(18, 2)
+  btcPrice  Decimal  @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+model Trade {
+  id        String     @id @default(cuid())
+  date      DateTime
+  ticker    String
+  assetType AssetType
+  action    TradeAction
+  shares    Decimal    @db.Decimal(18, 6)
+  price     Decimal    @db.Decimal(18, 4)
+  fees      Decimal    @db.Decimal(18, 2) @default(0)
+  notes     String?
+  createdAt DateTime   @default(now())
+
+  @@index([date])
+  @@index([ticker])
+}
+
+model PositionSnapshot {
+  id                    String   @id @default(cuid())
+  date                  DateTime
+  accountNumber         String?
+  accountName           String?
+  symbol                String
+  description           String?
+  quantity              Decimal? @db.Decimal(18, 6)
+  lastPrice             Decimal? @db.Decimal(18, 4)
+  currentValue          Decimal? @db.Decimal(18, 2)
+  totalGainLoss         Decimal? @db.Decimal(18, 2)
+  totalGainLossPercent  Decimal? @db.Decimal(18, 4)
+  percentOfAccount      Decimal? @db.Decimal(18, 4)
+  costBasisTotal        Decimal? @db.Decimal(18, 2)
+  averageCostBasis      Decimal? @db.Decimal(18, 4)
+  assetType             String?
+  createdAt             DateTime @default(now())
+
+  @@index([date])
+  @@index([symbol])
+}
+
+model LivePosition {
+  id              String   @id @default(cuid())
+  date            DateTime
+  symbol          String
+  quantity        Decimal? @db.Decimal(18, 6)
+  asset           String?
+  price           Decimal? @db.Decimal(18, 4)
+  cost            Decimal? @db.Decimal(18, 2)
+  marketValue     Decimal? @db.Decimal(18, 2)
+  gainDollar      Decimal? @db.Decimal(18, 2)
+  gainPercent     Decimal? @db.Decimal(18, 4)
+  percentOfPortfolio Decimal? @db.Decimal(18, 4)
+  term            String?
+  beta            Decimal? @db.Decimal(18, 4)
+  pe              Decimal? @db.Decimal(18, 4)
+  weekHigh        Decimal? @db.Decimal(18, 4)
+  weekLow         Decimal? @db.Decimal(18, 4)
+  gain30          Decimal? @db.Decimal(18, 4)
+  gain60          Decimal? @db.Decimal(18, 4)
+  gain90          Decimal? @db.Decimal(18, 4)
+  weight          Decimal? @db.Decimal(18, 4)
+  estPurchase     Decimal? @db.Decimal(18, 2)
+  sharesTarget    Decimal? @db.Decimal(18, 4)
+  rounded         Decimal? @db.Decimal(18, 4)
+  totalPurchase   Decimal? @db.Decimal(18, 2)
+  createdAt       DateTime @default(now())
+
+  @@index([date])
+  @@index([symbol])
+}
