@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { createSnapshot } from "./actions";
 
+export const dynamic = "force-dynamic";
+
 function formatInputDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }

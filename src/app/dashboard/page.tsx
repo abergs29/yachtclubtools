@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 function currency(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
