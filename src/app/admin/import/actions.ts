@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { normalizeHeader, parseCsv, parseNumber } from "@/lib/csv";
 import { parse as parseRaw } from "csv-parse/sync";
+import { refreshMarketQuotes } from "@/lib/market-data";
 
 function requireFile(formData: FormData, key: string): File {
   const file = formData.get(key);
@@ -452,6 +453,12 @@ export async function importLivePrices(formData: FormData) {
     });
   }
 
+  revalidatePath("/holdings");
+  revalidatePath("/admin/import");
+}
+
+export async function refreshQuotes() {
+  await refreshMarketQuotes();
   revalidatePath("/holdings");
   revalidatePath("/admin/import");
 }

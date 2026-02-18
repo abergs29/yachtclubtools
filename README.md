@@ -18,6 +18,7 @@ Unified web app for investment club operations: monthly updates, holdings, membe
    cp .env.example .env
    ```
    Set `DATABASE_URL` to your Postgres connection string.
+   Add `TWELVEDATA_API_KEY` to enable market quotes.
 3. Initialize the database:
    ```bash
    npx prisma migrate dev --name init
@@ -35,6 +36,11 @@ Admin workflows live under `/admin`:
 Member view:
 - `/dashboard` — read‑only monthly update with share price, ownership table, BTC value, and benchmark.
 - `/holdings` — latest positions snapshot + live prices table.
+
+## Market Quotes (Twelve Data)
+Set `TWELVEDATA_API_KEY` in your environment to enable quote refreshes. The admin import page includes a “Refresh Quotes” button, and the system rate‑limits refreshes using `MARKET_QUOTES_MINUTES` (default: 10).
+
+Optional: schedule the refresh endpoint with a cron service (Vercel Cron or any scheduler) calling `/api/market-quotes/refresh?secret=...` and set `MARKET_QUOTES_SECRET` to protect it.
 
 ## CSV Import Formats
 Template files live in `data/templates` for quick copy/paste.

@@ -26,6 +26,7 @@
 - Fidelity positions snapshot
 - Fidelity trade history
 - Live prices (GoogleFinance export)
+- Market quotes (Twelve Data API)
 
 ## Member View
 - Read‑only `/dashboard` showing:

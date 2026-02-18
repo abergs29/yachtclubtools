@@ -6,6 +6,7 @@ import {
   importFidelityPositions,
   importLivePrices,
   importTrades,
+  refreshQuotes,
 } from "./actions";
 
 const sectionClass =
@@ -86,6 +87,26 @@ export default function ImportPage() {
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
           >
             Import BTC Purchases
+          </button>
+        </form>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h2 className="text-xl font-semibold text-zinc-900">
+            Market Quotes (Twelve Data)
+          </h2>
+          <p className="text-sm text-zinc-600">
+            Pull current prices for the latest holdings. The refresh is rate‑limited
+            to avoid exceeding daily API limits.
+          </p>
+        </div>
+        <form action={refreshQuotes} className="flex flex-col gap-4">
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Refresh Quotes Now
           </button>
         </form>
       </section>

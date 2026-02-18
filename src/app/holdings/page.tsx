@@ -26,6 +26,9 @@ export default async function HoldingsPage() {
   const latestLive = await prisma.livePosition.findFirst({
     orderBy: { date: "desc" },
   });
+  const latestQuote = await prisma.marketQuote.findFirst({
+    orderBy: { asOf: "desc" },
+  });
 
   const positionRows = latestPosition
     ? await prisma.positionSnapshot.findMany({
@@ -38,6 +41,13 @@ export default async function HoldingsPage() {
     ? await prisma.livePosition.findMany({
         where: { date: latestLive.date },
         orderBy: { marketValue: "desc" },
+      })
+    : [];
+
+  const quoteRows = latestQuote
+    ? await prisma.marketQuote.findMany({
+        where: { asOf: latestQuote.asOf },
+        orderBy: { symbol: "asc" },
       })
     : [];
 
@@ -157,6 +167,39 @@ export default async function HoldingsPage() {
                           : null
                       )}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-zinc-900">Market Quotes (Twelve Data)</h2>
+          {latestQuote ? (
+            <p className="text-sm text-zinc-500">
+              As of {latestQuote.asOf.toLocaleString("en-US")}
+            </p>
+          ) : null}
+        </div>
+        {quoteRows.length === 0 ? (
+          <p className="mt-4 text-sm text-zinc-500">No market quotes yet.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="py-2">Symbol</th>
+                  <th className="py-2">Price</th>
+                </tr>
+              </thead>
+              <tbody className="text-zinc-700">
+                {quoteRows.map((row) => (
+                  <tr key={row.id} className="border-t border-zinc-100">
+                    <td className="py-2 font-medium text-zinc-900">{row.symbol}</td>
+                    <td className="py-2">{currency(Number(row.price))}</td>
                   </tr>
                 ))}
               </tbody>
