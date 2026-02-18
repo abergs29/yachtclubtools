@@ -6,12 +6,25 @@ import { normalizeHeader, parseCsv, parseNumber } from "@/lib/csv";
 import { parse as parseRaw } from "csv-parse/sync";
 import { refreshMarketQuotes } from "@/lib/market-data";
 
-function requireFile(formData: FormData, key: string): File {
+type UploadBlob = Blob & { name?: string };
+
+function requireFile(formData: FormData, key: string): UploadBlob {
   const file = formData.get(key);
-  if (!file || !(file instanceof File) || file.size === 0) {
+  if (!file || typeof file !== "object") {
     throw new Error("Upload a CSV file.");
   }
-  return file;
+  const blob = file as UploadBlob;
+  if (typeof blob.text !== "function" || typeof blob.arrayBuffer !== "function") {
+    throw new Error("Upload a CSV file.");
+  }
+  if (typeof blob.size === "number" && blob.size === 0) {
+    throw new Error("Upload a CSV file.");
+  }
+  return blob;
+}
+
+function getFileName(file: UploadBlob) {
+  return typeof file.name === "string" ? file.name : "";
 }
 
 function parseDate(value: string | undefined) {
@@ -281,7 +294,7 @@ export async function importFidelityPositions(formData: FormData) {
 
   const asOfDateInput = formData.get("positionsDate")?.toString();
   const asOfDate =
-    parseDate(asOfDateInput) || parseDateFromFilename(file.name) || new Date();
+    parseDate(asOfDateInput) || parseDateFromFilename(getFileName(file)) || new Date();
 
   const headers = Object.keys(rows[0]);
   const normalized = headers.map(normalizeHeader);
@@ -411,7 +424,7 @@ export async function importLivePrices(formData: FormData) {
 
   const asOfDateInput = formData.get("livePricesDate")?.toString();
   const asOfDate =
-    parseDate(asOfDateInput) || parseDateFromFilename(file.name) || new Date();
+    parseDate(asOfDateInput) || parseDateFromFilename(getFileName(file)) || new Date();
 
   function getCell(row: string[], key: string) {
     const index = headers.findIndex((header) => header === key);
