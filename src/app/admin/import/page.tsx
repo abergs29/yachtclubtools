@@ -36,7 +36,11 @@ export default function ImportPage() {
             . You can also use <span className="font-mono">member_id</span> or <span className="font-mono">member_email</span>.
           </p>
         </div>
-        <form action={importContributions} className="flex flex-col gap-4">
+        <form
+          action={importContributions}
+          encType="multipart/form-data"
+          className="flex flex-col gap-4"
+        >
           <input
             type="file"
             name="contributions"
@@ -80,7 +84,11 @@ export default function ImportPage() {
             CSV headers: <span className="font-mono">Purchase Date, Amount Purchased (BTC), Amount Purchased (USD), Purchased At (BTC/USD)</span>.
           </p>
         </div>
-        <form action={importBtcPurchases} className="flex flex-col gap-4">
+        <form
+          action={importBtcPurchases}
+          encType="multipart/form-data"
+          className="flex flex-col gap-4"
+        >
           <input type="file" name="btc" accept=".csv" className="text-sm" />
           <button
             type="submit"
@@ -118,7 +126,11 @@ export default function ImportPage() {
             Upload the positions export (portfolio snapshot). Optionally set an as‑of date if the filename does not include one.
           </p>
         </div>
-        <form action={importFidelityPositions} className="flex flex-col gap-4">
+        <form
+          action={importFidelityPositions}
+          encType="multipart/form-data"
+          className="flex flex-col gap-4"
+        >
           <input type="date" name="positionsDate" className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm" />
           <input type="file" name="positions" accept=".csv" className="text-sm" />
           <button
@@ -137,7 +149,11 @@ export default function ImportPage() {
             Upload the activity/history export. Buys and sells will be added to the trade ledger.
           </p>
         </div>
-        <form action={importFidelityHistory} className="flex flex-col gap-4">
+        <form
+          action={importFidelityHistory}
+          encType="multipart/form-data"
+          className="flex flex-col gap-4"
+        >
           <input type="file" name="history" accept=".csv" className="text-sm" />
           <button
             type="submit"
@@ -155,7 +171,11 @@ export default function ImportPage() {
             Upload the live prices CSV. The importer looks for the row with the Symbol header.
           </p>
         </div>
-        <form action={importLivePrices} className="flex flex-col gap-4">
+        <form
+          action={importLivePrices}
+          encType="multipart/form-data"
+          className="flex flex-col gap-4"
+        >
           <input type="date" name="livePricesDate" className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm" />
           <input type="file" name="livePrices" accept=".csv" className="text-sm" />
           <button
@@ -174,7 +194,11 @@ export default function ImportPage() {
             If you use a non‑Fidelity export, map to: Date, Symbol, Action, Quantity, Price.
           </p>
         </div>
-        <form action={importTrades} className="flex flex-col gap-4">
+        <form
+          action={importTrades}
+          encType="multipart/form-data"
+          className="flex flex-col gap-4"
+        >
           <input type="file" name="trades" accept=".csv" className="text-sm" />
           <button
             type="submit"
