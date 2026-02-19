@@ -5,21 +5,16 @@ import { prisma } from "@/lib/db";
 import { normalizeHeader, parseCsv, parseNumber } from "@/lib/csv";
 import { parse as parseRaw } from "csv-parse/sync";
 import { refreshMarketQuotes } from "@/lib/market-data";
+import type { ActionResult } from "./types";
 
 type UploadBlob = Blob & { name?: string };
 
-function requireFile(formData: FormData, key: string): UploadBlob {
+function getFile(formData: FormData, key: string): UploadBlob | null {
   const file = formData.get(key);
-  if (!file || typeof file !== "object") {
-    throw new Error("Upload a CSV file.");
-  }
+  if (!file || typeof file !== "object") return null;
   const blob = file as UploadBlob;
-  if (typeof blob.text !== "function" || typeof blob.arrayBuffer !== "function") {
-    throw new Error("Upload a CSV file.");
-  }
-  if (typeof blob.size === "number" && blob.size === 0) {
-    throw new Error("Upload a CSV file.");
-  }
+  if (typeof blob.text !== "function" || typeof blob.arrayBuffer !== "function") return null;
+  if (typeof blob.size === "number" && blob.size === 0) return null;
   return blob;
 }
 
@@ -34,6 +29,20 @@ async function readFileText(file: UploadBlob) {
   // Fidelity exports sometimes come through as UTF-16 with null bytes.
   const decoded = new TextDecoder("utf-16le").decode(buffer);
   return decoded.replace(/\u0000/g, "");
+}
+
+function actionError(message: string): ActionResult {
+  return { ok: false, message };
+}
+
+function actionSuccess(message: string): ActionResult {
+  return { ok: true, message };
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Something went wrong. Please try again.";
 }
 
 function parseDate(value: string | undefined) {
@@ -112,94 +121,75 @@ async function findOrCreateMember({
   throw new Error("Each contribution must include member_id, member_name, or member_email.");
 }
 
-export async function importContributions(formData: FormData) {
-  const file = requireFile(formData, "contributions");
-  const text = await readFileText(file);
-  const rows = parseCsv(text);
+export async function importContributions(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const file = getFile(formData, "contributions");
+    if (!file) return actionError("Please choose a CSV file before importing.");
 
-  for (const row of rows) {
-    const date = parseDate(row.date);
-    const amount = parseNumber(row.amount);
-    const shares = parseNumber(row.shares);
-    const typeRaw = row.type?.toUpperCase();
+    const text = await readFileText(file);
+    const rows = parseCsv(text);
+    let created = 0;
+    let skipped = 0;
 
-    if (!date || amount === null || shares === null) {
-      continue;
+    for (const row of rows) {
+      const date = parseDate(row.date);
+      const amount = parseNumber(row.amount);
+      const shares = parseNumber(row.shares);
+      const typeRaw = row.type?.toUpperCase();
+
+      if (!date || amount === null || shares === null) {
+        skipped += 1;
+        continue;
+      }
+
+      const member = await findOrCreateMember({
+        id: row.member_id,
+        name: row.member_name,
+        email: row.member_email,
+      });
+
+      await prisma.contribution.create({
+        data: {
+          memberId: member.id,
+          date,
+          amount,
+          shares,
+          type: typeRaw === "WITHDRAW" ? "WITHDRAW" : "BUY",
+          memo: row.memo || null,
+        },
+      });
+      created += 1;
     }
 
-    const member = await findOrCreateMember({
-      id: row.member_id,
-      name: row.member_name,
-      email: row.member_email,
-    });
+    revalidatePath("/dashboard");
+    revalidatePath("/admin/import");
 
-    await prisma.contribution.create({
-      data: {
-        memberId: member.id,
-        date,
-        amount,
-        shares,
-        type: typeRaw === "WITHDRAW" ? "WITHDRAW" : "BUY",
-        memo: row.memo || null,
-      },
-    });
-  }
-
-  revalidatePath("/dashboard");
-  revalidatePath("/admin/import");
-}
-
-export async function createBtcPurchase(formData: FormData) {
-  const date = parseDate(formData.get("date")?.toString());
-  const btcAmount = parseNumber(formData.get("btcAmount")?.toString());
-  const usdAmount = parseNumber(formData.get("usdAmount")?.toString());
-  const btcPrice = parseNumber(formData.get("btcPrice")?.toString());
-
-  if (!date || btcAmount === null || usdAmount === null || btcPrice === null) {
-    throw new Error("All BTC fields are required.");
-  }
-
-  await prisma.btcPurchase.create({
-    data: {
-      date,
-      btcAmount,
-      usdAmount,
-      btcPrice,
-    },
-  });
-
-  revalidatePath("/dashboard");
-  revalidatePath("/admin/import");
-}
-
-export async function importBtcPurchases(formData: FormData) {
-  const file = requireFile(formData, "btc");
-  const text = await readFileText(file);
-  const rows = parseCsv(text);
-
-  const headerMap: Record<string, string> = {};
-  if (rows[0]) {
-    const headers = Object.keys(rows[0]);
-    const normalized = headers.map(normalizeHeader);
-    function pick(target: string, options: string[]) {
-      const index = normalized.findIndex((header) => options.includes(header));
-      if (index >= 0) headerMap[target] = headers[index];
+    if (created === 0) {
+      return actionError("No valid contributions found in the file.");
     }
-
-    pick("date", ["date", "purchase date"]);
-    pick("btc_amount", ["btc_amount", "amount purchased (btc)"]);
-    pick("usd_amount", ["usd_amount", "amount purchased (usd)"]);
-    pick("btc_price", ["btc_price", "purchased at (btc/usd)"]);
+    return actionSuccess(
+      `Imported ${created} contributions${skipped ? ` (skipped ${skipped}).` : "."}`
+    );
+  } catch (error) {
+    return actionError(getErrorMessage(error));
   }
+}
 
-  for (const row of rows) {
-    const date = parseDate(row[headerMap.date || "date"] || row.date);
-    const btcAmount = parseNumber(row[headerMap.btc_amount || "btc_amount"] || row.btc_amount);
-    const usdAmount = parseNumber(row[headerMap.usd_amount || "usd_amount"] || row.usd_amount);
-    const btcPrice = parseNumber(row[headerMap.btc_price || "btc_price"] || row.btc_price);
+export async function createBtcPurchase(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const date = parseDate(formData.get("date")?.toString());
+    const btcAmount = parseNumber(formData.get("btcAmount")?.toString());
+    const usdAmount = parseNumber(formData.get("usdAmount")?.toString());
+    const btcPrice = parseNumber(formData.get("btcPrice")?.toString());
 
     if (!date || btcAmount === null || usdAmount === null || btcPrice === null) {
-      continue;
+      return actionError("All BTC fields are required.");
     }
 
     await prisma.btcPurchase.create({
@@ -210,10 +200,84 @@ export async function importBtcPurchases(formData: FormData) {
         btcPrice,
       },
     });
-  }
 
-  revalidatePath("/dashboard");
-  revalidatePath("/admin/import");
+    revalidatePath("/dashboard");
+    revalidatePath("/admin/import");
+
+    return actionSuccess("BTC purchase saved.");
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
+}
+
+export async function importBtcPurchases(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const file = getFile(formData, "btc");
+    if (!file) return actionError("Please choose a CSV file before importing.");
+
+    const text = await readFileText(file);
+    const rows = parseCsv(text);
+    let created = 0;
+    let skipped = 0;
+
+    const headerMap: Record<string, string> = {};
+    if (rows[0]) {
+      const headers = Object.keys(rows[0]);
+      const normalized = headers.map(normalizeHeader);
+      function pick(target: string, options: string[]) {
+        const index = normalized.findIndex((header) => options.includes(header));
+        if (index >= 0) headerMap[target] = headers[index];
+      }
+
+      pick("date", ["date", "purchase date"]);
+      pick("btc_amount", ["btc_amount", "amount purchased (btc)"]);
+      pick("usd_amount", ["usd_amount", "amount purchased (usd)"]);
+      pick("btc_price", ["btc_price", "purchased at (btc/usd)"]);
+    }
+
+    for (const row of rows) {
+      const date = parseDate(row[headerMap.date || "date"] || row.date);
+      const btcAmount = parseNumber(
+        row[headerMap.btc_amount || "btc_amount"] || row.btc_amount
+      );
+      const usdAmount = parseNumber(
+        row[headerMap.usd_amount || "usd_amount"] || row.usd_amount
+      );
+      const btcPrice = parseNumber(
+        row[headerMap.btc_price || "btc_price"] || row.btc_price
+      );
+
+      if (!date || btcAmount === null || usdAmount === null || btcPrice === null) {
+        skipped += 1;
+        continue;
+      }
+
+      await prisma.btcPurchase.create({
+        data: {
+          date,
+          btcAmount,
+          usdAmount,
+          btcPrice,
+        },
+      });
+      created += 1;
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/admin/import");
+
+    if (created === 0) {
+      return actionError("No valid BTC purchases found in the file.");
+    }
+    return actionSuccess(
+      `Imported ${created} BTC purchases${skipped ? ` (skipped ${skipped}).` : "."}`
+    );
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
 }
 
 function getHeaderMap(headers: string[]) {
@@ -252,272 +316,396 @@ function inferAssetType(value: string | undefined, symbol?: string) {
   return "STOCK";
 }
 
-export async function importTrades(formData: FormData) {
-  const file = requireFile(formData, "trades");
-  const text = await readFileText(file);
-  const rows = parseCsv(text);
-  if (rows.length === 0) return;
+export async function importTrades(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const file = getFile(formData, "trades");
+    if (!file) return actionError("Please choose a CSV file before importing.");
 
-  const headers = Object.keys(rows[0]);
-  const map = getHeaderMap(headers);
+    const text = await readFileText(file);
+    const rows = parseCsv(text);
+    if (rows.length === 0) return actionError("The CSV file is empty.");
 
-  if (!map.date || !map.ticker || !map.action || !map.shares || !map.price) {
-    throw new Error(
-      "Could not map required columns. Ensure the CSV includes Date, Symbol, Action, Quantity, and Price columns."
-    );
-  }
+    const headers = Object.keys(rows[0]);
+    const map = getHeaderMap(headers);
 
-  for (const row of rows) {
-    const date = parseDate(row[map.date]);
-    const action = parseAction(row[map.action]);
-    const shares = parseNumber(row[map.shares]);
-    const price = parseNumber(row[map.price]);
-
-    if (!date || !action || shares === null || price === null) {
-      continue;
+    if (!map.date || !map.ticker || !map.action || !map.shares || !map.price) {
+      return actionError(
+        "Could not map required columns. Ensure the CSV includes Date, Symbol, Action, Quantity, and Price columns."
+      );
     }
 
-    await prisma.trade.create({
-      data: {
-        date,
-        ticker: row[map.ticker],
-        action,
-        shares,
-        price,
-        fees: parseNumber(map.fees ? row[map.fees] : undefined) || 0,
-        assetType: inferAssetType(map.asset_type ? row[map.asset_type] : undefined, row[map.ticker]),
-        notes: null,
-      },
-    });
-  }
+    let created = 0;
+    let skipped = 0;
 
-  revalidatePath("/dashboard");
-  revalidatePath("/admin/import");
-}
+    for (const row of rows) {
+      const date = parseDate(row[map.date]);
+      const action = parseAction(row[map.action]);
+      const shares = parseNumber(row[map.shares]);
+      const price = parseNumber(row[map.price]);
 
-export async function importFidelityPositions(formData: FormData) {
-  const file = requireFile(formData, "positions");
-  const text = await readFileText(file);
-  const rawRows: string[][] = parseRaw(text, {
-    skip_empty_lines: true,
-    relax_column_count: true,
-    bom: true,
-  });
-  if (rawRows.length === 0) return;
+      if (!date || !action || shares === null || price === null) {
+        skipped += 1;
+        continue;
+      }
 
-  const asOfDateInput = formData.get("positionsDate")?.toString();
-  const asOfDate =
-    parseDate(asOfDateInput) || parseDateFromFilename(getFileName(file)) || new Date();
-
-  const headerIndex = rawRows.findIndex((row) => {
-    const normalized = row.map(normalizeHeader);
-    const hasSymbol = normalized.some(
-      (cell) => cell === "symbol" || cell.includes("symbol")
-    );
-    if (!hasSymbol) return false;
-    const hints = ["quantity", "last price", "current value", "market value", "description"];
-    return normalized.some((cell) => hints.some((hint) => cell.includes(hint)));
-  });
-
-  if (headerIndex < 0) {
-    throw new Error("Positions import missing a Symbol header row.");
-  }
-
-  const headers = rawRows[headerIndex].map((cell) => normalizeHeader(cell));
-  const dataRows = rawRows.slice(headerIndex + 1);
-
-  function pickIndex(options: string[]) {
-    const index = headers.findIndex((header) =>
-      options.some((option) => header === option || header.includes(option))
-    );
-    return index >= 0 ? index : null;
-  }
-
-  const accountNumberIndex = pickIndex(["account number"]);
-  const accountNameIndex = pickIndex(["account name"]);
-  const symbolIndex = pickIndex(["symbol"]);
-  const descriptionIndex = pickIndex(["description"]);
-  const quantityIndex = pickIndex(["quantity", "qty", "shares"]);
-  const lastPriceIndex = pickIndex(["last price", "price"]);
-  const currentValueIndex = pickIndex(["current value", "market value", "mkt value"]);
-  const totalGainLossIndex = pickIndex(["total gain/loss dollar", "total gain/loss ($)"]);
-  const totalGainLossPercentIndex = pickIndex([
-    "total gain/loss percent",
-    "total gain/loss (%)",
-  ]);
-  const percentOfAccountIndex = pickIndex([
-    "percent of account",
-    "% of account",
-    "% of portfolio",
-  ]);
-  const costBasisIndex = pickIndex(["cost basis total", "cost basis"]);
-  const avgCostIndex = pickIndex(["average cost basis", "avg cost basis", "average cost"]);
-  const typeIndex = pickIndex(["type", "asset type"]);
-
-  if (symbolIndex === null) {
-    throw new Error("Positions import requires a Symbol column.");
-  }
-
-  await prisma.positionSnapshot.deleteMany({ where: { date: asOfDate } });
-
-  for (const row of dataRows) {
-    const symbol = row[symbolIndex]?.trim();
-    if (!symbol) continue;
-
-    await prisma.positionSnapshot.create({
-      data: {
-        date: asOfDate,
-        accountNumber:
-          accountNumberIndex !== null ? row[accountNumberIndex] : null,
-        accountName: accountNameIndex !== null ? row[accountNameIndex] : null,
-        symbol,
-        description: descriptionIndex !== null ? row[descriptionIndex] : null,
-        quantity: parseNumber(quantityIndex !== null ? row[quantityIndex] : undefined),
-        lastPrice: parseNumber(lastPriceIndex !== null ? row[lastPriceIndex] : undefined),
-        currentValue: parseNumber(
-          currentValueIndex !== null ? row[currentValueIndex] : undefined
-        ),
-        totalGainLoss: parseNumber(
-          totalGainLossIndex !== null ? row[totalGainLossIndex] : undefined
-        ),
-        totalGainLossPercent: parseNumber(
-          totalGainLossPercentIndex !== null ? row[totalGainLossPercentIndex] : undefined
-        ),
-        percentOfAccount: parseNumber(
-          percentOfAccountIndex !== null ? row[percentOfAccountIndex] : undefined
-        ),
-        costBasisTotal: parseNumber(costBasisIndex !== null ? row[costBasisIndex] : undefined),
-        averageCostBasis: parseNumber(avgCostIndex !== null ? row[avgCostIndex] : undefined),
-        assetType: typeIndex !== null ? row[typeIndex] : null,
-      },
-    });
-  }
-
-  revalidatePath("/holdings");
-  revalidatePath("/admin/import");
-}
-
-export async function importFidelityHistory(formData: FormData) {
-  const file = requireFile(formData, "history");
-  const text = await readFileText(file);
-  const rawRows: string[][] = parseRaw(text, {
-    skip_empty_lines: true,
-    relax_column_count: true,
-    bom: true,
-  });
-  const headerIndex = rawRows.findIndex((row) =>
-    row.some((cell) => normalizeHeader(cell) === "run date")
-  );
-
-  if (headerIndex < 0) {
-    throw new Error("History import missing header row.");
-  }
-
-  const headers = rawRows[headerIndex].map(normalizeHeader);
-  const dataRows = rawRows.slice(headerIndex + 1);
-
-  function getCell(row: string[], key: string) {
-    const index = headers.findIndex((header) => header === key);
-    return index >= 0 ? row[index] : undefined;
-  }
-
-  for (const row of dataRows) {
-    const date = parseDate(getCell(row, "run date"));
-    const action = parseAction(getCell(row, "action"));
-    const symbol = getCell(row, "symbol")?.trim();
-    const shares = parseNumber(getCell(row, "quantity"));
-    const price = parseNumber(getCell(row, "price ($)"));
-
-    if (!date || !action || !symbol || shares === null || price === null) {
-      continue;
+      await prisma.trade.create({
+        data: {
+          date,
+          ticker: row[map.ticker],
+          action,
+          shares,
+          price,
+          fees: parseNumber(map.fees ? row[map.fees] : undefined) || 0,
+          assetType: inferAssetType(
+            map.asset_type ? row[map.asset_type] : undefined,
+            row[map.ticker]
+          ),
+          notes: null,
+        },
+      });
+      created += 1;
     }
 
-    const commission = parseNumber(getCell(row, "commission ($)")) || 0;
-    const fees = parseNumber(getCell(row, "fees ($)")) || 0;
+    revalidatePath("/dashboard");
+    revalidatePath("/admin/import");
 
-    await prisma.trade.create({
-      data: {
-        date,
-        ticker: symbol,
-        action,
-        shares,
-        price,
-        fees: commission + fees,
-        assetType: inferAssetType(getCell(row, "type"), symbol),
-        notes: getCell(row, "action") || null,
-      },
-    });
+    if (created === 0) {
+      return actionError("No valid trades found in the file.");
+    }
+    return actionSuccess(
+      `Imported ${created} trades${skipped ? ` (skipped ${skipped}).` : "."}`
+    );
+  } catch (error) {
+    return actionError(getErrorMessage(error));
   }
-
-  revalidatePath("/holdings");
-  revalidatePath("/admin/import");
 }
 
-export async function importLivePrices(formData: FormData) {
-  const file = requireFile(formData, "livePrices");
-  const text = await readFileText(file);
-  const rows: string[][] = parseRaw(text, { skip_empty_lines: false });
+export async function importFidelityPositions(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const file = getFile(formData, "positions");
+    if (!file) return actionError("Please choose a CSV file before importing.");
 
-  const headerIndex = rows.findIndex((row) =>
-    row.some((cell) => normalizeHeader(cell) === "symbol")
-  );
-  if (headerIndex < 0) {
-    throw new Error("Live prices file missing a Symbol header.");
-  }
-
-  const headers = rows[headerIndex].map((cell) => normalizeHeader(cell));
-  const dataRows = rows.slice(headerIndex + 1);
-
-  const asOfDateInput = formData.get("livePricesDate")?.toString();
-  const asOfDate =
-    parseDate(asOfDateInput) || parseDateFromFilename(getFileName(file)) || new Date();
-
-  function getCell(row: string[], key: string) {
-    const index = headers.findIndex((header) => header === key);
-    return index >= 0 ? row[index] : undefined;
-  }
-
-  await prisma.livePosition.deleteMany({ where: { date: asOfDate } });
-
-  for (const row of dataRows) {
-    const symbol = getCell(row, "symbol")?.trim();
-    if (!symbol) continue;
-
-    await prisma.livePosition.create({
-      data: {
-        date: asOfDate,
-        symbol,
-        quantity: parseNumber(getCell(row, "qty")),
-        asset: getCell(row, "asset") || null,
-        price: parseNumber(getCell(row, "price")),
-        cost: parseNumber(getCell(row, "cost")),
-        marketValue: parseNumber(getCell(row, "mkt value")),
-        gainDollar: parseNumber(getCell(row, "gain ($)")),
-        gainPercent: parseNumber(getCell(row, "gain (%)")),
-        percentOfPortfolio: parseNumber(getCell(row, "% of portfolio")),
-        term: getCell(row, "term") || null,
-        beta: parseNumber(getCell(row, "beta")),
-        pe: parseNumber(getCell(row, "p/e")),
-        weekHigh: parseNumber(getCell(row, "52 wk high")),
-        weekLow: parseNumber(getCell(row, "52 wk low")),
-        gain30: parseNumber(getCell(row, "30 day gain")),
-        gain60: parseNumber(getCell(row, "60 day gain")),
-        gain90: parseNumber(getCell(row, "90 day gain")),
-        weight: parseNumber(getCell(row, "weight")),
-        estPurchase: parseNumber(getCell(row, "est. purchase")),
-        sharesTarget: parseNumber(getCell(row, "# shares")),
-        rounded: parseNumber(getCell(row, "rounded")),
-        totalPurchase: parseNumber(getCell(row, "total purchase")),
-      },
+    const text = await readFileText(file);
+    const rawRows: string[][] = parseRaw(text, {
+      skip_empty_lines: true,
+      relax_column_count: true,
+      bom: true,
     });
-  }
+    if (rawRows.length === 0) return actionError("The CSV file is empty.");
 
-  revalidatePath("/holdings");
-  revalidatePath("/admin/import");
+    const asOfDateInput = formData.get("positionsDate")?.toString();
+    const asOfDate =
+      parseDate(asOfDateInput) ||
+      parseDateFromFilename(getFileName(file)) ||
+      new Date();
+
+    const headerIndex = rawRows.findIndex((row) => {
+      const normalized = row.map(normalizeHeader);
+      const hasSymbol = normalized.some(
+        (cell) => cell === "symbol" || cell.includes("symbol")
+      );
+      if (!hasSymbol) return false;
+      const hints = [
+        "quantity",
+        "last price",
+        "current value",
+        "market value",
+        "description",
+      ];
+      return normalized.some((cell) => hints.some((hint) => cell.includes(hint)));
+    });
+
+    if (headerIndex < 0) {
+      return actionError("Positions import missing a Symbol header row.");
+    }
+
+    const headers = rawRows[headerIndex].map((cell) => normalizeHeader(cell));
+    const dataRows = rawRows.slice(headerIndex + 1);
+
+    function pickIndex(options: string[]) {
+      const index = headers.findIndex((header) =>
+        options.some((option) => header === option || header.includes(option))
+      );
+      return index >= 0 ? index : null;
+    }
+
+    const accountNumberIndex = pickIndex(["account number"]);
+    const accountNameIndex = pickIndex(["account name"]);
+    const symbolIndex = pickIndex(["symbol"]);
+    const descriptionIndex = pickIndex(["description"]);
+    const quantityIndex = pickIndex(["quantity", "qty", "shares"]);
+    const lastPriceIndex = pickIndex(["last price", "price"]);
+    const currentValueIndex = pickIndex(["current value", "market value", "mkt value"]);
+    const totalGainLossIndex = pickIndex(["total gain/loss dollar", "total gain/loss ($)"]);
+    const totalGainLossPercentIndex = pickIndex([
+      "total gain/loss percent",
+      "total gain/loss (%)",
+    ]);
+    const percentOfAccountIndex = pickIndex([
+      "percent of account",
+      "% of account",
+      "% of portfolio",
+    ]);
+    const costBasisIndex = pickIndex(["cost basis total", "cost basis"]);
+    const avgCostIndex = pickIndex(["average cost basis", "avg cost basis", "average cost"]);
+    const typeIndex = pickIndex(["type", "asset type"]);
+
+    if (symbolIndex === null) {
+      return actionError("Positions import requires a Symbol column.");
+    }
+
+    await prisma.positionSnapshot.deleteMany({ where: { date: asOfDate } });
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const row of dataRows) {
+      const symbol = row[symbolIndex]?.trim();
+      if (!symbol) {
+        skipped += 1;
+        continue;
+      }
+
+      await prisma.positionSnapshot.create({
+        data: {
+          date: asOfDate,
+          accountNumber:
+            accountNumberIndex !== null ? row[accountNumberIndex] : null,
+          accountName: accountNameIndex !== null ? row[accountNameIndex] : null,
+          symbol,
+          description: descriptionIndex !== null ? row[descriptionIndex] : null,
+          quantity: parseNumber(
+            quantityIndex !== null ? row[quantityIndex] : undefined
+          ),
+          lastPrice: parseNumber(
+            lastPriceIndex !== null ? row[lastPriceIndex] : undefined
+          ),
+          currentValue: parseNumber(
+            currentValueIndex !== null ? row[currentValueIndex] : undefined
+          ),
+          totalGainLoss: parseNumber(
+            totalGainLossIndex !== null ? row[totalGainLossIndex] : undefined
+          ),
+          totalGainLossPercent: parseNumber(
+            totalGainLossPercentIndex !== null
+              ? row[totalGainLossPercentIndex]
+              : undefined
+          ),
+          percentOfAccount: parseNumber(
+            percentOfAccountIndex !== null ? row[percentOfAccountIndex] : undefined
+          ),
+          costBasisTotal: parseNumber(
+            costBasisIndex !== null ? row[costBasisIndex] : undefined
+          ),
+          averageCostBasis: parseNumber(
+            avgCostIndex !== null ? row[avgCostIndex] : undefined
+          ),
+          assetType: typeIndex !== null ? row[typeIndex] : null,
+        },
+      });
+      created += 1;
+    }
+
+    revalidatePath("/holdings");
+    revalidatePath("/admin/import");
+
+    if (created === 0) {
+      return actionError("No valid positions found in the file.");
+    }
+    return actionSuccess(
+      `Imported ${created} positions${skipped ? ` (skipped ${skipped}).` : "."}`
+    );
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
 }
 
-export async function refreshQuotes() {
-  await refreshMarketQuotes();
-  revalidatePath("/holdings");
-  revalidatePath("/admin/import");
+export async function importFidelityHistory(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const file = getFile(formData, "history");
+    if (!file) return actionError("Please choose a CSV file before importing.");
+
+    const text = await readFileText(file);
+    const rawRows: string[][] = parseRaw(text, {
+      skip_empty_lines: true,
+      relax_column_count: true,
+      bom: true,
+    });
+    const headerIndex = rawRows.findIndex((row) =>
+      row.some((cell) => normalizeHeader(cell) === "run date")
+    );
+
+    if (headerIndex < 0) {
+      return actionError("History import missing header row.");
+    }
+
+    const headers = rawRows[headerIndex].map(normalizeHeader);
+    const dataRows = rawRows.slice(headerIndex + 1);
+
+    function getCell(row: string[], key: string) {
+      const index = headers.findIndex((header) => header === key);
+      return index >= 0 ? row[index] : undefined;
+    }
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const row of dataRows) {
+      const date = parseDate(getCell(row, "run date"));
+      const action = parseAction(getCell(row, "action"));
+      const symbol = getCell(row, "symbol")?.trim();
+      const shares = parseNumber(getCell(row, "quantity"));
+      const price = parseNumber(getCell(row, "price ($)"));
+
+      if (!date || !action || !symbol || shares === null || price === null) {
+        skipped += 1;
+        continue;
+      }
+
+      const commission = parseNumber(getCell(row, "commission ($)")) || 0;
+      const fees = parseNumber(getCell(row, "fees ($)")) || 0;
+
+      await prisma.trade.create({
+        data: {
+          date,
+          ticker: symbol,
+          action,
+          shares,
+          price,
+          fees: commission + fees,
+          assetType: inferAssetType(getCell(row, "type"), symbol),
+          notes: getCell(row, "action") || null,
+        },
+      });
+      created += 1;
+    }
+
+    revalidatePath("/holdings");
+    revalidatePath("/admin/import");
+
+    if (created === 0) {
+      return actionError("No valid trades found in the history export.");
+    }
+    return actionSuccess(
+      `Imported ${created} trades${skipped ? ` (skipped ${skipped}).` : "."}`
+    );
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
+}
+
+export async function importLivePrices(
+  _prevState: ActionResult | undefined,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const file = getFile(formData, "livePrices");
+    if (!file) return actionError("Please choose a CSV file before importing.");
+
+    const text = await readFileText(file);
+    const rows: string[][] = parseRaw(text, { skip_empty_lines: false });
+
+    const headerIndex = rows.findIndex((row) =>
+      row.some((cell) => normalizeHeader(cell) === "symbol")
+    );
+    if (headerIndex < 0) {
+      return actionError("Live prices file missing a Symbol header.");
+    }
+
+    const headers = rows[headerIndex].map((cell) => normalizeHeader(cell));
+    const dataRows = rows.slice(headerIndex + 1);
+
+    const asOfDateInput = formData.get("livePricesDate")?.toString();
+    const asOfDate =
+      parseDate(asOfDateInput) ||
+      parseDateFromFilename(getFileName(file)) ||
+      new Date();
+
+    function getCell(row: string[], key: string) {
+      const index = headers.findIndex((header) => header === key);
+      return index >= 0 ? row[index] : undefined;
+    }
+
+    await prisma.livePosition.deleteMany({ where: { date: asOfDate } });
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const row of dataRows) {
+      const symbol = getCell(row, "symbol")?.trim();
+      if (!symbol) {
+        skipped += 1;
+        continue;
+      }
+
+      await prisma.livePosition.create({
+        data: {
+          date: asOfDate,
+          symbol,
+          quantity: parseNumber(getCell(row, "qty")),
+          asset: getCell(row, "asset") || null,
+          price: parseNumber(getCell(row, "price")),
+          cost: parseNumber(getCell(row, "cost")),
+          marketValue: parseNumber(getCell(row, "mkt value")),
+          gainDollar: parseNumber(getCell(row, "gain ($)")),
+          gainPercent: parseNumber(getCell(row, "gain (%)")),
+          percentOfPortfolio: parseNumber(getCell(row, "% of portfolio")),
+          term: getCell(row, "term") || null,
+          beta: parseNumber(getCell(row, "beta")),
+          pe: parseNumber(getCell(row, "p/e")),
+          weekHigh: parseNumber(getCell(row, "52 wk high")),
+          weekLow: parseNumber(getCell(row, "52 wk low")),
+          gain30: parseNumber(getCell(row, "30 day gain")),
+          gain60: parseNumber(getCell(row, "60 day gain")),
+          gain90: parseNumber(getCell(row, "90 day gain")),
+          weight: parseNumber(getCell(row, "weight")),
+          estPurchase: parseNumber(getCell(row, "est. purchase")),
+          sharesTarget: parseNumber(getCell(row, "# shares")),
+          rounded: parseNumber(getCell(row, "rounded")),
+          totalPurchase: parseNumber(getCell(row, "total purchase")),
+        },
+      });
+      created += 1;
+    }
+
+    revalidatePath("/holdings");
+    revalidatePath("/admin/import");
+
+    if (created === 0) {
+      return actionError("No valid rows found in the live prices CSV.");
+    }
+    return actionSuccess(
+      `Imported ${created} live price rows${skipped ? ` (skipped ${skipped}).` : "."}`
+    );
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
+}
+
+export async function refreshQuotes(
+  _prevState: ActionResult | undefined
+): Promise<ActionResult> {
+  try {
+    const result = await refreshMarketQuotes();
+    revalidatePath("/holdings");
+    revalidatePath("/admin/import");
+
+    if (result?.skipped) {
+      return actionSuccess(
+        "Quotes were refreshed recently. Please wait a few minutes and try again."
+      );
+    }
+    return actionSuccess(`Refreshed quotes for ${result.count} symbols.`);
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
 }
