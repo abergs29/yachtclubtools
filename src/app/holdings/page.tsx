@@ -20,6 +20,15 @@ function percent(value: number | null | undefined) {
   }).format(value);
 }
 
+function formatCstTimestamp(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZoneName: "short",
+  }).format(date);
+}
+
 export default async function HoldingsPage() {
   const latestPosition = await prisma.positionSnapshot.findFirst({
     orderBy: { date: "desc" },
@@ -130,6 +139,8 @@ export default async function HoldingsPage() {
         : null,
   }));
 
+  const asOfLabel = latestAsOf ? formatCstTimestamp(latestAsOf) : null;
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
       <div className="space-y-2">
@@ -142,10 +153,7 @@ export default async function HoldingsPage() {
         </p>
       </div>
 
-      <LivePositionsTable
-        rows={liveRowsWithPct}
-        asOfLabel={latestAsOf ? latestAsOf.toLocaleString("en-US") : null}
-      />
+      <LivePositionsTable rows={liveRowsWithPct} asOfLabel={asOfLabel} />
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">

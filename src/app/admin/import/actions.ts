@@ -695,13 +695,14 @@ export async function refreshQuotes(
   _prevState: ActionResult | undefined
 ): Promise<ActionResult> {
   try {
+    const minMinutes = Number(process.env.MARKET_QUOTES_MINUTES ?? 10);
     const result = await refreshMarketQuotes();
     revalidatePath("/holdings");
     revalidatePath("/admin/import");
 
     if (result?.skipped) {
       return actionSuccess(
-        "Quotes were refreshed recently. Please wait a few minutes and try again."
+        `Quotes were refreshed recently. Please wait ${minMinutes} minutes between refreshes.`
       );
     }
     return actionSuccess(`Refreshed quotes for ${result.count} symbols.`);
