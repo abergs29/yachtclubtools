@@ -21,12 +21,28 @@ function percent(value: number | null | undefined) {
 }
 
 function formatCstTimestamp(date: Date) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZoneName: "short",
-  }).format(date);
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(date);
+  } catch {
+    return (
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(date) + " CT"
+    );
+  }
 }
 
 export default async function HoldingsPage() {
