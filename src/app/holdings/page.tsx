@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { LivePositionsTable } from "./LivePositionsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,6 @@ export default async function HoldingsPage() {
   const latestPosition = await prisma.positionSnapshot.findFirst({
     orderBy: { date: "desc" },
   });
-  const latestLive = await prisma.livePosition.findFirst({
-    orderBy: { date: "desc" },
-  });
   const latestQuote = await prisma.marketQuote.findFirst({
     orderBy: { asOf: "desc" },
   });
@@ -37,19 +35,100 @@ export default async function HoldingsPage() {
       })
     : [];
 
-  const liveRows = latestLive
-    ? await prisma.livePosition.findMany({
-        where: { date: latestLive.date },
-        orderBy: { marketValue: "desc" },
-      })
-    : [];
-
   const quoteRows = latestQuote
     ? await prisma.marketQuote.findMany({
         where: { asOf: latestQuote.asOf },
         orderBy: { symbol: "asc" },
       })
     : [];
+
+  const symbols = positionRows
+    .map((row) => row.symbol?.trim())
+    .filter(Boolean)
+    .map((symbol) => symbol!.toUpperCase());
+
+  const latestQuotes = symbols.length
+    ? await prisma.marketQuote.findMany({
+        where: { symbol: { in: symbols } },
+        orderBy: { asOf: "desc" },
+      })
+    : [];
+
+  const quoteMap = new Map<
+    string,
+    { price: number; asOf: Date }
+  >();
+  let latestAsOf: Date | null = null;
+  for (const quote of latestQuotes) {
+    const symbol = quote.symbol.toUpperCase();
+    if (!quoteMap.has(symbol)) {
+      const price = Number(quote.price);
+      quoteMap.set(symbol, { price, asOf: quote.asOf });
+    }
+    if (!latestAsOf || quote.asOf > latestAsOf) {
+      latestAsOf = quote.asOf;
+    }
+  }
+
+  const liveRows = positionRows.map((row) => {
+    const symbol = row.symbol.trim().toUpperCase();
+    const quantity = row.quantity !== null ? Number(row.quantity) : null;
+    const price = quoteMap.get(symbol)?.price ?? null;
+    const marketValue =
+      quantity !== null && price !== null ? quantity * price : null;
+    const costBasisTotal =
+      row.costBasisTotal !== null
+        ? Number(row.costBasisTotal)
+        : row.averageCostBasis !== null && quantity !== null
+          ? Number(row.averageCostBasis) * quantity
+          : null;
+    const gainDollar =
+      marketValue !== null && costBasisTotal !== null
+        ? marketValue - costBasisTotal
+        : null;
+    const gainPercent =
+      gainDollar !== null && costBasisTotal
+        ? gainDollar / costBasisTotal
+        : null;
+
+    return {
+      id: row.id,
+      symbol,
+      quantity,
+      asset: row.assetType ?? null,
+      price,
+      cost: costBasisTotal,
+      marketValue,
+      gainDollar,
+      gainPercent,
+      percentPortfolio: null,
+      term: null,
+      beta: null,
+      pe: null,
+      weekHigh: null,
+      weekLow: null,
+      gain30: null,
+      gain60: null,
+      gain90: null,
+      weight: null,
+      estPurchase: null,
+      sharesTarget: null,
+      rounded: null,
+      totalPurchase: null,
+    };
+  });
+
+  const totalMarketValue = liveRows.reduce(
+    (acc, row) => acc + (row.marketValue ?? 0),
+    0
+  );
+  const liveRowsWithPct = liveRows.map((row) => ({
+    ...row,
+    percentPortfolio:
+      totalMarketValue > 0 && row.marketValue !== null
+        ? row.marketValue / totalMarketValue
+        : null,
+  }));
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
@@ -62,6 +141,11 @@ export default async function HoldingsPage() {
           Latest positions snapshot and live‑price metrics.
         </p>
       </div>
+
+      <LivePositionsTable
+        rows={liveRowsWithPct}
+        asOfLabel={latestAsOf ? latestAsOf.toLocaleString("en-US") : null}
+      />
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
@@ -109,61 +193,6 @@ export default async function HoldingsPage() {
                       {percent(
                         row.percentOfAccount
                           ? Number(row.percentOfAccount) / 100
-                          : null
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-zinc-900">Live Prices (GoogleFinance)</h2>
-          {latestLive ? (
-            <p className="text-sm text-zinc-500">
-              As of {latestLive.date.toLocaleDateString("en-US")}
-            </p>
-          ) : null}
-        </div>
-        {liveRows.length === 0 ? (
-          <p className="mt-4 text-sm text-zinc-500">No live price imports yet.</p>
-        ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="py-2">Symbol</th>
-                  <th className="py-2">Qty</th>
-                  <th className="py-2">Price</th>
-                  <th className="py-2">Mkt Value</th>
-                  <th className="py-2">Gain (%)</th>
-                  <th className="py-2">% of Portfolio</th>
-                </tr>
-              </thead>
-              <tbody className="text-zinc-700">
-                {liveRows.map((row) => (
-                  <tr key={row.id} className="border-t border-zinc-100">
-                    <td className="py-2 font-medium text-zinc-900">{row.symbol}</td>
-                    <td className="py-2">
-                      {row.quantity !== null ? row.quantity.toString() : "—"}
-                    </td>
-                    <td className="py-2">
-                      {currency(row.price ? Number(row.price) : null)}
-                    </td>
-                    <td className="py-2">
-                      {currency(row.marketValue ? Number(row.marketValue) : null)}
-                    </td>
-                    <td className="py-2">
-                      {percent(row.gainPercent ? Number(row.gainPercent) / 100 : null)}
-                    </td>
-                    <td className="py-2">
-                      {percent(
-                        row.percentOfPortfolio
-                          ? Number(row.percentOfPortfolio) / 100
                           : null
                       )}
                     </td>

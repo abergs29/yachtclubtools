@@ -6,7 +6,6 @@ import {
   importContributions,
   importFidelityHistory,
   importFidelityPositions,
-  importLivePrices,
   importTrades,
   refreshQuotes,
 } from "../import/actions";
@@ -30,7 +29,7 @@ export default async function MonthlyUpdatePage() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
       <div className="space-y-2">
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-zinc-500">
           Admin
@@ -313,38 +312,6 @@ export default async function MonthlyUpdatePage() {
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
           >
             Import Trade History
-          </button>
-        </ActionForm>
-      </section>
-
-      <section className={sectionClass}>
-        <div>
-          <h3 className="text-xl font-semibold text-zinc-900">
-            Live Prices (GoogleFinance Sheet)
-          </h3>
-          <p className="text-sm text-zinc-600">
-            Upload the live prices CSV. The importer looks for the row with the
-            Symbol header.
-          </p>
-        </div>
-        <ActionForm action={importLivePrices} className="flex flex-col gap-4">
-          <input
-            type="date"
-            name="livePricesDate"
-            className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm"
-          />
-          <input
-            type="file"
-            name="livePrices"
-            accept=".csv"
-            className={fileInputClass}
-            required
-          />
-          <button
-            type="submit"
-            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
-          >
-            Import Live Prices
           </button>
         </ActionForm>
       </section>
