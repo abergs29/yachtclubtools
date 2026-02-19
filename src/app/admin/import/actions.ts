@@ -27,6 +27,15 @@ function getFileName(file: UploadBlob) {
   return typeof file.name === "string" ? file.name : "";
 }
 
+async function readFileText(file: UploadBlob) {
+  const text = await file.text();
+  if (text && !text.includes("\u0000")) return text;
+  const buffer = await file.arrayBuffer();
+  // Fidelity exports sometimes come through as UTF-16 with null bytes.
+  const decoded = new TextDecoder("utf-16le").decode(buffer);
+  return decoded.replace(/\u0000/g, "");
+}
+
 function parseDate(value: string | undefined) {
   if (!value) return null;
   const date = new Date(value);
@@ -105,7 +114,7 @@ async function findOrCreateMember({
 
 export async function importContributions(formData: FormData) {
   const file = requireFile(formData, "contributions");
-  const text = await file.text();
+  const text = await readFileText(file);
   const rows = parseCsv(text);
 
   for (const row of rows) {
@@ -165,7 +174,7 @@ export async function createBtcPurchase(formData: FormData) {
 
 export async function importBtcPurchases(formData: FormData) {
   const file = requireFile(formData, "btc");
-  const text = await file.text();
+  const text = await readFileText(file);
   const rows = parseCsv(text);
 
   const headerMap: Record<string, string> = {};
@@ -245,7 +254,7 @@ function inferAssetType(value: string | undefined, symbol?: string) {
 
 export async function importTrades(formData: FormData) {
   const file = requireFile(formData, "trades");
-  const text = await file.text();
+  const text = await readFileText(file);
   const rows = parseCsv(text);
   if (rows.length === 0) return;
 
@@ -288,10 +297,11 @@ export async function importTrades(formData: FormData) {
 
 export async function importFidelityPositions(formData: FormData) {
   const file = requireFile(formData, "positions");
-  const text = await file.text();
+  const text = await readFileText(file);
   const rawRows: string[][] = parseRaw(text, {
     skip_empty_lines: true,
     relax_column_count: true,
+    bom: true,
   });
   if (rawRows.length === 0) return;
 
@@ -299,9 +309,15 @@ export async function importFidelityPositions(formData: FormData) {
   const asOfDate =
     parseDate(asOfDateInput) || parseDateFromFilename(getFileName(file)) || new Date();
 
-  const headerIndex = rawRows.findIndex((row) =>
-    row.some((cell) => normalizeHeader(cell) === "symbol")
-  );
+  const headerIndex = rawRows.findIndex((row) => {
+    const normalized = row.map(normalizeHeader);
+    const hasSymbol = normalized.some(
+      (cell) => cell === "symbol" || cell.includes("symbol")
+    );
+    if (!hasSymbol) return false;
+    const hints = ["quantity", "last price", "current value", "market value", "description"];
+    return normalized.some((cell) => hints.some((hint) => cell.includes(hint)));
+  });
 
   if (headerIndex < 0) {
     throw new Error("Positions import missing a Symbol header row.");
@@ -311,7 +327,9 @@ export async function importFidelityPositions(formData: FormData) {
   const dataRows = rawRows.slice(headerIndex + 1);
 
   function pickIndex(options: string[]) {
-    const index = headers.findIndex((header) => options.includes(header));
+    const index = headers.findIndex((header) =>
+      options.some((option) => header === option || header.includes(option))
+    );
     return index >= 0 ? index : null;
   }
 
@@ -381,7 +399,7 @@ export async function importFidelityPositions(formData: FormData) {
 
 export async function importFidelityHistory(formData: FormData) {
   const file = requireFile(formData, "history");
-  const text = await file.text();
+  const text = await readFileText(file);
   const rawRows: string[][] = parseRaw(text, { skip_empty_lines: true });
   const headerIndex = rawRows.findIndex((row) =>
     row.some((cell) => normalizeHeader(cell) === "run date")
@@ -433,7 +451,7 @@ export async function importFidelityHistory(formData: FormData) {
 
 export async function importLivePrices(formData: FormData) {
   const file = requireFile(formData, "livePrices");
-  const text = await file.text();
+  const text = await readFileText(file);
   const rows: string[][] = parseRaw(text, { skip_empty_lines: false });
 
   const headerIndex = rows.findIndex((row) =>

@@ -46,6 +46,7 @@ export default function ImportPage() {
             name="contributions"
             accept=".csv"
             className="text-sm"
+            required
           />
           <button
             type="submit"
@@ -89,7 +90,7 @@ export default function ImportPage() {
           encType="multipart/form-data"
           className="flex flex-col gap-4"
         >
-          <input type="file" name="btc" accept=".csv" className="text-sm" />
+          <input type="file" name="btc" accept=".csv" className="text-sm" required />
           <button
             type="submit"
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
@@ -132,7 +133,7 @@ export default function ImportPage() {
           className="flex flex-col gap-4"
         >
           <input type="date" name="positionsDate" className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm" />
-          <input type="file" name="positions" accept=".csv" className="text-sm" />
+          <input type="file" name="positions" accept=".csv" className="text-sm" required />
           <button
             type="submit"
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
@@ -154,7 +155,7 @@ export default function ImportPage() {
           encType="multipart/form-data"
           className="flex flex-col gap-4"
         >
-          <input type="file" name="history" accept=".csv" className="text-sm" />
+          <input type="file" name="history" accept=".csv" className="text-sm" required />
           <button
             type="submit"
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
@@ -177,7 +178,7 @@ export default function ImportPage() {
           className="flex flex-col gap-4"
         >
           <input type="date" name="livePricesDate" className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm" />
-          <input type="file" name="livePrices" accept=".csv" className="text-sm" />
+          <input type="file" name="livePrices" accept=".csv" className="text-sm" required />
           <button
             type="submit"
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
@@ -199,7 +200,7 @@ export default function ImportPage() {
           encType="multipart/form-data"
           className="flex flex-col gap-4"
         >
-          <input type="file" name="trades" accept=".csv" className="text-sm" />
+          <input type="file" name="trades" accept=".csv" className="text-sm" required />
           <button
             type="submit"
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
