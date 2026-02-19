@@ -400,7 +400,11 @@ export async function importFidelityPositions(formData: FormData) {
 export async function importFidelityHistory(formData: FormData) {
   const file = requireFile(formData, "history");
   const text = await readFileText(file);
-  const rawRows: string[][] = parseRaw(text, { skip_empty_lines: true });
+  const rawRows: string[][] = parseRaw(text, {
+    skip_empty_lines: true,
+    relax_column_count: true,
+    bom: true,
+  });
   const headerIndex = rawRows.findIndex((row) =>
     row.some((cell) => normalizeHeader(cell) === "run date")
   );
