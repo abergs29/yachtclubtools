@@ -27,10 +27,10 @@ export default function RootLayout({
                 Holdings
               </a>
               <a href="/admin/monthly-update" className="hover:text-zinc-900">
-                Admin
+                Admin Tools
               </a>
-              <a href="/admin/import" className="hover:text-zinc-900">
-                Imports
+              <a href="/admin/trades" className="hover:text-zinc-900">
+                Trades
               </a>
             </div>
           </nav>

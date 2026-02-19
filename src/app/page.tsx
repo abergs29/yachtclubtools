@@ -32,13 +32,13 @@ export default function Home() {
             href="/admin/monthly-update"
             className="rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-900"
           >
-            Admin Monthly Update
+            Admin Tools
           </a>
           <a
-            href="/admin/import"
+            href="/admin/trades"
             className="rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-900"
           >
-            Imports
+            Recent Trades
           </a>
         </div>
       </main>

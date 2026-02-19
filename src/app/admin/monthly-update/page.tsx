@@ -1,7 +1,24 @@
 import { prisma } from "@/lib/db";
 import { createSnapshot } from "./actions";
+import {
+  createBtcPurchase,
+  importBtcPurchases,
+  importContributions,
+  importFidelityHistory,
+  importFidelityPositions,
+  importLivePrices,
+  importTrades,
+  refreshQuotes,
+} from "../import/actions";
+import { ActionForm } from "../import/ActionForm";
 
 export const dynamic = "force-dynamic";
+
+const sectionClass =
+  "rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm space-y-4";
+
+const fileInputClass =
+  "text-sm file:mr-3 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-800 cursor-pointer";
 
 function formatInputDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -107,6 +124,255 @@ export default async function MonthlyUpdatePage() {
           </button>
         </div>
       </form>
+
+      <div className="space-y-2 pt-4">
+        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-zinc-500">
+          Imports
+        </p>
+        <h2 className="text-2xl font-semibold text-zinc-900">Imports & Updates</h2>
+        <p className="text-zinc-600">
+          Upload Fidelity exports or enter BTC purchases manually to keep the
+          monthly update accurate.
+        </p>
+      </div>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            Contributions Import
+          </h3>
+          <p className="text-sm text-zinc-600">
+            CSV headers:{" "}
+            <span className="font-mono">
+              date,member_name,amount,shares,type,memo
+            </span>
+            . You can also use <span className="font-mono">member_id</span> or{" "}
+            <span className="font-mono">member_email</span>.
+          </p>
+        </div>
+        <ActionForm action={importContributions} className="flex flex-col gap-4">
+          <input
+            type="file"
+            name="contributions"
+            accept=".csv"
+            className={fileInputClass}
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import Contributions
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            BTC Purchase (Manual)
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Enter a single BTC purchase (typical monthly flow).
+          </p>
+        </div>
+        <ActionForm action={createBtcPurchase} className="grid gap-4 md:grid-cols-2">
+          <input
+            type="date"
+            name="date"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <input
+            type="text"
+            name="btcAmount"
+            placeholder="BTC amount"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <input
+            type="text"
+            name="usdAmount"
+            placeholder="USD amount"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <input
+            type="text"
+            name="btcPrice"
+            placeholder="BTC price"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Save BTC Purchase
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            BTC Purchases CSV
+          </h3>
+          <p className="text-sm text-zinc-600">
+            CSV headers:{" "}
+            <span className="font-mono">
+              Purchase Date, Amount Purchased (BTC), Amount Purchased (USD),
+              Purchased At (BTC/USD)
+            </span>
+            .
+          </p>
+        </div>
+        <ActionForm action={importBtcPurchases} className="flex flex-col gap-4">
+          <input type="file" name="btc" accept=".csv" className={fileInputClass} required />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import BTC Purchases
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            Market Quotes (Twelve Data)
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Pull current prices for the latest holdings. The refresh is rate-limited
+            to avoid exceeding daily API limits.
+          </p>
+        </div>
+        <ActionForm action={refreshQuotes} className="flex flex-col gap-4">
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Refresh Quotes Now
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            Fidelity Positions Snapshot
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Upload the positions export (portfolio snapshot). Optionally set an as-of
+            date if the filename does not include one.
+          </p>
+        </div>
+        <ActionForm action={importFidelityPositions} className="flex flex-col gap-4">
+          <input
+            type="date"
+            name="positionsDate"
+            className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+          />
+          <input
+            type="file"
+            name="positions"
+            accept=".csv"
+            className={fileInputClass}
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import Positions Snapshot
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            Fidelity Trade History
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Upload the activity/history export. Buys and sells will be added to the
+            trade ledger.
+          </p>
+        </div>
+        <ActionForm action={importFidelityHistory} className="flex flex-col gap-4">
+          <input
+            type="file"
+            name="history"
+            accept=".csv"
+            className={fileInputClass}
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import Trade History
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            Live Prices (GoogleFinance Sheet)
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Upload the live prices CSV. The importer looks for the row with the
+            Symbol header.
+          </p>
+        </div>
+        <ActionForm action={importLivePrices} className="flex flex-col gap-4">
+          <input
+            type="date"
+            name="livePricesDate"
+            className="w-fit rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+          />
+          <input
+            type="file"
+            name="livePrices"
+            accept=".csv"
+            className={fileInputClass}
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import Live Prices
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">Trades (Generic CSV)</h3>
+          <p className="text-sm text-zinc-600">
+            If you use a non-Fidelity export, map to: Date, Symbol, Action, Quantity,
+            Price.
+          </p>
+        </div>
+        <ActionForm action={importTrades} className="flex flex-col gap-4">
+          <input
+            type="file"
+            name="trades"
+            accept=".csv"
+            className={fileInputClass}
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import Trades CSV
+          </button>
+        </ActionForm>
+      </section>
     </div>
   );
 }
