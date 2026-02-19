@@ -289,64 +289,88 @@ export async function importTrades(formData: FormData) {
 export async function importFidelityPositions(formData: FormData) {
   const file = requireFile(formData, "positions");
   const text = await file.text();
-  const rows = parseCsv(text);
-  if (rows.length === 0) return;
+  const rawRows: string[][] = parseRaw(text, {
+    skip_empty_lines: true,
+    relax_column_count: true,
+  });
+  if (rawRows.length === 0) return;
 
   const asOfDateInput = formData.get("positionsDate")?.toString();
   const asOfDate =
     parseDate(asOfDateInput) || parseDateFromFilename(getFileName(file)) || new Date();
 
-  const headers = Object.keys(rows[0]);
-  const normalized = headers.map(normalizeHeader);
-  function pick(options: string[]) {
-    const index = normalized.findIndex((header) => options.includes(header));
-    return index >= 0 ? headers[index] : null;
+  const headerIndex = rawRows.findIndex((row) =>
+    row.some((cell) => normalizeHeader(cell) === "symbol")
+  );
+
+  if (headerIndex < 0) {
+    throw new Error("Positions import missing a Symbol header row.");
   }
 
-  const accountNumberKey = pick(["account number"]);
-  const accountNameKey = pick(["account name"]);
-  const symbolKey = pick(["symbol"]);
-  const descriptionKey = pick(["description"]);
-  const quantityKey = pick(["quantity", "qty", "shares"]);
-  const lastPriceKey = pick(["last price", "price"]);
-  const currentValueKey = pick(["current value", "market value", "mkt value"]);
-  const totalGainLossKey = pick(["total gain/loss dollar", "total gain/loss ($)"]);
-  const totalGainLossPercentKey = pick(["total gain/loss percent", "total gain/loss (%)"]);
-  const percentOfAccountKey = pick(["percent of account", "% of account", "% of portfolio"]);
-  const costBasisKey = pick(["cost basis total", "cost basis"]);
-  const avgCostKey = pick(["average cost basis", "avg cost basis", "average cost"]);
-  const typeKey = pick(["type", "asset type"]);
+  const headers = rawRows[headerIndex].map((cell) => normalizeHeader(cell));
+  const dataRows = rawRows.slice(headerIndex + 1);
 
-  if (!symbolKey) {
+  function pickIndex(options: string[]) {
+    const index = headers.findIndex((header) => options.includes(header));
+    return index >= 0 ? index : null;
+  }
+
+  const accountNumberIndex = pickIndex(["account number"]);
+  const accountNameIndex = pickIndex(["account name"]);
+  const symbolIndex = pickIndex(["symbol"]);
+  const descriptionIndex = pickIndex(["description"]);
+  const quantityIndex = pickIndex(["quantity", "qty", "shares"]);
+  const lastPriceIndex = pickIndex(["last price", "price"]);
+  const currentValueIndex = pickIndex(["current value", "market value", "mkt value"]);
+  const totalGainLossIndex = pickIndex(["total gain/loss dollar", "total gain/loss ($)"]);
+  const totalGainLossPercentIndex = pickIndex([
+    "total gain/loss percent",
+    "total gain/loss (%)",
+  ]);
+  const percentOfAccountIndex = pickIndex([
+    "percent of account",
+    "% of account",
+    "% of portfolio",
+  ]);
+  const costBasisIndex = pickIndex(["cost basis total", "cost basis"]);
+  const avgCostIndex = pickIndex(["average cost basis", "avg cost basis", "average cost"]);
+  const typeIndex = pickIndex(["type", "asset type"]);
+
+  if (symbolIndex === null) {
     throw new Error("Positions import requires a Symbol column.");
   }
 
   await prisma.positionSnapshot.deleteMany({ where: { date: asOfDate } });
 
-  for (const row of rows) {
-    const symbol = row[symbolKey]?.trim();
+  for (const row of dataRows) {
+    const symbol = row[symbolIndex]?.trim();
     if (!symbol) continue;
 
     await prisma.positionSnapshot.create({
       data: {
         date: asOfDate,
-        accountNumber: accountNumberKey ? row[accountNumberKey] : null,
-        accountName: accountNameKey ? row[accountNameKey] : null,
+        accountNumber:
+          accountNumberIndex !== null ? row[accountNumberIndex] : null,
+        accountName: accountNameIndex !== null ? row[accountNameIndex] : null,
         symbol,
-        description: descriptionKey ? row[descriptionKey] : null,
-        quantity: parseNumber(quantityKey ? row[quantityKey] : undefined),
-        lastPrice: parseNumber(lastPriceKey ? row[lastPriceKey] : undefined),
-        currentValue: parseNumber(currentValueKey ? row[currentValueKey] : undefined),
-        totalGainLoss: parseNumber(totalGainLossKey ? row[totalGainLossKey] : undefined),
+        description: descriptionIndex !== null ? row[descriptionIndex] : null,
+        quantity: parseNumber(quantityIndex !== null ? row[quantityIndex] : undefined),
+        lastPrice: parseNumber(lastPriceIndex !== null ? row[lastPriceIndex] : undefined),
+        currentValue: parseNumber(
+          currentValueIndex !== null ? row[currentValueIndex] : undefined
+        ),
+        totalGainLoss: parseNumber(
+          totalGainLossIndex !== null ? row[totalGainLossIndex] : undefined
+        ),
         totalGainLossPercent: parseNumber(
-          totalGainLossPercentKey ? row[totalGainLossPercentKey] : undefined
+          totalGainLossPercentIndex !== null ? row[totalGainLossPercentIndex] : undefined
         ),
         percentOfAccount: parseNumber(
-          percentOfAccountKey ? row[percentOfAccountKey] : undefined
+          percentOfAccountIndex !== null ? row[percentOfAccountIndex] : undefined
         ),
-        costBasisTotal: parseNumber(costBasisKey ? row[costBasisKey] : undefined),
-        averageCostBasis: parseNumber(avgCostKey ? row[avgCostKey] : undefined),
-        assetType: typeKey ? row[typeKey] : null,
+        costBasisTotal: parseNumber(costBasisIndex !== null ? row[costBasisIndex] : undefined),
+        averageCostBasis: parseNumber(avgCostIndex !== null ? row[avgCostIndex] : undefined),
+        assetType: typeIndex !== null ? row[typeIndex] : null,
       },
     });
   }
