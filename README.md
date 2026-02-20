@@ -42,6 +42,22 @@ Set `TWELVEDATA_API_KEY` in your environment to enable quote refreshes. The admi
 
 Optional: schedule the refresh endpoint with a cron service (Vercel Cron or any scheduler) calling `/api/market-quotes/refresh?secret=...` and set `MARKET_QUOTES_SECRET` to protect it.
 
+## Google Sheets (Live Metrics Feed)
+`/api/google-sheet` pulls a Google Sheet dynamically and returns JSON rows.
+
+Supported configuration (first match wins):
+1. `GOOGLE_SHEETS_CSV_URL` for a published CSV export.
+2. `GOOGLE_SHEETS_SHEET_ID` + `GOOGLE_SHEETS_API_KEY` + `GOOGLE_SHEETS_RANGE` for the Sheets API.
+3. `GOOGLE_SHEETS_SHEET_ID` (public sheet) with optional `GOOGLE_SHEETS_GID` or `?gid=` query param.
+
+Response shape:
+- `count`: number of rows
+- `rows`: array of objects keyed by header row
+
+Example:
+- `GET /api/google-sheet`
+- `GET /api/google-sheet?gid=123456789`
+
 ## CSV Import Formats
 Template files live in `data/templates` for quick copy/paste.
 ### Contributions
