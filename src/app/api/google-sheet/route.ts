@@ -4,12 +4,8 @@ import { parse as parseRaw } from "csv-parse/sync";
 export const dynamic = "force-dynamic";
 
 function isLikelyHtml(payload: string) {
-  const trimmed = payload.trim();
-  return (
-    trimmed.startsWith("<!doctype html") ||
-    trimmed.startsWith("<html") ||
-    trimmed.startsWith("<!DOCTYPE html")
-  );
+  const sample = payload.slice(0, 1500).toLowerCase();
+  return sample.includes("<!doctype html") || sample.includes("<html");
 }
 
 async function fetchGoogleSheetCsvRows(url: string) {
@@ -17,6 +13,13 @@ async function fetchGoogleSheetCsvRows(url: string) {
   if (!response.ok) {
     throw new Error(
       `Failed to fetch public CSV from Google Sheets (${response.status}).`
+    );
+  }
+
+  const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+  if (contentType.includes("text/html")) {
+    throw new Error(
+      "Google Sheets CSV endpoint returned HTML. Verify GOOGLE_SHEETS_CSV_URL is a published export URL."
     );
   }
 

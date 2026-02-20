@@ -153,13 +153,17 @@ async function fetchSheetMetrics() {
       return new Map<string, MetricsRow>();
     }
 
+    const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+    if (contentType.includes("text/html")) {
+      console.error(
+        "Google Sheets CSV URL returned HTML content type instead of CSV."
+      );
+      return new Map<string, MetricsRow>();
+    }
+
     const csv = await response.text();
-    const trimmed = csv.trim();
-    if (
-      trimmed.startsWith("<!doctype html") ||
-      trimmed.startsWith("<html") ||
-      trimmed.startsWith("<!DOCTYPE html")
-    ) {
+    const sample = csv.slice(0, 1500).toLowerCase();
+    if (sample.includes("<!doctype html") || sample.includes("<html")) {
       console.error(
         "Google Sheets CSV URL returned HTML instead of CSV. Check GOOGLE_SHEETS_CSV_URL points to a published export URL."
       );

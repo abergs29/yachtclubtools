@@ -736,13 +736,16 @@ async function fetchGoogleSheetRowCount(): Promise<number> {
     );
   }
 
+  const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+  if (contentType.includes("text/html")) {
+    throw new Error(
+      "Google Sheets endpoint returned HTML. Verify GOOGLE_SHEETS_CSV_URL is a published CSV export URL."
+    );
+  }
+
   const body = await response.text();
-  const trimmedBody = body.trim();
-  if (
-    trimmedBody.startsWith("<!DOCTYPE html") ||
-    trimmedBody.startsWith("<!doctype html") ||
-    trimmedBody.startsWith("<html")
-  ) {
+  const sample = body.slice(0, 1500).toLowerCase();
+  if (sample.includes("<!doctype html") || sample.includes("<html")) {
     throw new Error(
       "Google Sheets endpoint returned HTML. Verify GOOGLE_SHEETS_CSV_URL is a published CSV export URL."
     );
