@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { LivePositionsTable } from "./LivePositionsTable";
+import { parse as parseRaw } from "csv-parse/sync";
+import { normalizeHeader, parseNumber } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,86 @@ function formatCstTimestamp(date: Date) {
   }
 }
 
+const SHEET_RANGE = {
+  startRow: 8,
+  endRow: 15,
+  startCol: 1,
+  endCol: 17,
+};
+
+type MetricsRow = Record<string, string>;
+
+function sliceSheetRange(rows: string[][]) {
+  return rows
+    .slice(SHEET_RANGE.startRow - 1, SHEET_RANGE.endRow)
+    .map((row) => row.slice(SHEET_RANGE.startCol - 1, SHEET_RANGE.endCol));
+}
+
+function buildMetricsMap(rows: string[][]) {
+  const sliced = sliceSheetRange(rows);
+  if (sliced.length === 0) return new Map<string, MetricsRow>();
+
+  const [headerRow, ...dataRows] = sliced;
+  const headers = headerRow.map((value) => normalizeHeader(String(value)));
+  const symbolIndex = headers.findIndex((header) =>
+    ["symbol", "ticker"].includes(header)
+  );
+  if (symbolIndex < 0) return new Map<string, MetricsRow>();
+
+  const metricsMap = new Map<string, MetricsRow>();
+  for (const row of dataRows) {
+    const rawSymbol = row[symbolIndex];
+    const symbol = rawSymbol ? String(rawSymbol).trim().toUpperCase() : "";
+    if (!symbol) continue;
+
+    const metrics: MetricsRow = {};
+    headers.forEach((header, index) => {
+      if (!header) return;
+      metrics[header] = row[index] ? String(row[index]).trim() : "";
+    });
+    metricsMap.set(symbol, metrics);
+  }
+
+  return metricsMap;
+}
+
+function getMetricNumber(metrics: MetricsRow | undefined, keys: string[]) {
+  if (!metrics) return null;
+  for (const key of keys) {
+    const value = metrics[key];
+    const parsed = parseNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function getMetricText(metrics: MetricsRow | undefined, keys: string[]) {
+  if (!metrics) return null;
+  for (const key of keys) {
+    const value = metrics[key];
+    if (value) return value;
+  }
+  return null;
+}
+
+async function fetchSheetMetrics() {
+  const csvUrl = process.env.GOOGLE_SHEETS_CSV_URL;
+  if (!csvUrl) return new Map<string, MetricsRow>();
+
+  const response = await fetch(csvUrl, {
+    cache: "force-cache",
+    next: { revalidate: 60 * 60 * 24 },
+  });
+  if (!response.ok) return new Map<string, MetricsRow>();
+
+  const csv = await response.text();
+  const rows = parseRaw(csv, {
+    skip_empty_lines: true,
+    relax_column_count: true,
+  }) as string[][];
+  return buildMetricsMap(rows);
+}
+
 export default async function HoldingsPage() {
   const latestPosition = await prisma.positionSnapshot.findFirst({
     orderBy: { date: "desc" },
@@ -52,6 +134,7 @@ export default async function HoldingsPage() {
   const latestQuote = await prisma.marketQuote.findFirst({
     orderBy: { asOf: "desc" },
   });
+  const sheetMetrics = await fetchSheetMetrics();
 
   const positionRows = latestPosition
     ? await prisma.positionSnapshot.findMany({
@@ -97,6 +180,7 @@ export default async function HoldingsPage() {
 
   const liveRows = positionRows.map((row) => {
     const symbol = row.symbol.trim().toUpperCase();
+    const metrics = sheetMetrics.get(symbol);
     const quantity = row.quantity !== null ? Number(row.quantity) : null;
     const price = quoteMap.get(symbol)?.price ?? null;
     const marketValue =
@@ -127,19 +211,19 @@ export default async function HoldingsPage() {
       gainDollar,
       gainPercent,
       percentPortfolio: null,
-      term: null,
-      beta: null,
-      pe: null,
-      weekHigh: null,
-      weekLow: null,
-      gain30: null,
-      gain60: null,
-      gain90: null,
-      weight: null,
-      estPurchase: null,
-      sharesTarget: null,
-      rounded: null,
-      totalPurchase: null,
+      term: getMetricText(metrics, ["term"]),
+      beta: getMetricNumber(metrics, ["beta"]),
+      pe: getMetricNumber(metrics, ["p/e", "pe"]),
+      weekHigh: getMetricNumber(metrics, ["52 wk high", "52 week high", "52wk high"]),
+      weekLow: getMetricNumber(metrics, ["52 wk low", "52 week low", "52wk low"]),
+      gain30: getMetricNumber(metrics, ["30 day gain", "30d gain"]),
+      gain60: getMetricNumber(metrics, ["60 day gain", "60d gain"]),
+      gain90: getMetricNumber(metrics, ["90 day gain", "90d gain"]),
+      weight: getMetricNumber(metrics, ["weight"]),
+      estPurchase: getMetricNumber(metrics, ["est. purchase", "est purchase"]),
+      sharesTarget: getMetricNumber(metrics, ["# shares", "shares target"]),
+      rounded: getMetricNumber(metrics, ["rounded"]),
+      totalPurchase: getMetricNumber(metrics, ["total purchase"]),
     };
   });
 
