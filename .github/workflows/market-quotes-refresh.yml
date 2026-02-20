@@ -1,0 +1,60 @@
+name: External Data Refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * 1-5"
+    - cron: "0 22,23 * * 1-5"
+
+jobs:
+  market-quotes-refresh:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/10 * * * 1-5'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh Twelve Data quotes
+        env:
+          CRON_APP_URL: ${{ secrets.CRON_APP_URL }}
+          MARKET_QUOTES_SECRET: ${{ secrets.MARKET_QUOTES_SECRET }}
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${CRON_APP_URL:-https://yachtclubtools.vercel.app}"
+          BASE_URL="${BASE_URL%/}"
+          URL="${BASE_URL}/api/market-quotes/refresh"
+
+          if [ -n "${MARKET_QUOTES_SECRET}" ]; then
+            URL="${URL}?secret=${MARKET_QUOTES_SECRET}"
+          fi
+
+          echo "Refreshing market quotes from ${BASE_URL}"
+          curl -fsS -H "User-Agent: github-actions" "$URL"
+          echo
+
+  google-sheet-refresh:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 22,23 * * 1-5'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh Google sheet metrics at NY close +2h
+        env:
+          CRON_APP_URL: ${{ secrets.CRON_APP_URL }}
+          GOOGLE_SHEETS_SECRET: ${{ secrets.GOOGLE_SHEETS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          NY_HOUR="$(TZ=America/New_York date +%H)"
+          if [ "$NY_HOUR" != "18" ]; then
+            echo "Skipping run. NY hour is $NY_HOUR, expected 18."
+            exit 0
+          fi
+
+          BASE_URL="${CRON_APP_URL:-https://yachtclubtools.vercel.app}"
+          BASE_URL="${BASE_URL%/}"
+          URL="${BASE_URL}/api/google-sheet/refresh"
+
+          if [ -n "${GOOGLE_SHEETS_SECRET}" ]; then
+            URL="${URL}?secret=${GOOGLE_SHEETS_SECRET}"
+          fi
+
+          echo "Refreshing Google sheet metrics from ${BASE_URL}"
+          curl -fsS -H "User-Agent: github-actions" "$URL"
+          echo

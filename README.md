@@ -40,7 +40,20 @@ Member view:
 ## Market Quotes (Twelve Data)
 Set `TWELVEDATA_API_KEY` in your environment to enable quote refreshes. The admin import page includes a “Refresh Quotes” button, and the system rate‑limits refreshes using `MARKET_QUOTES_MINUTES` (default: 10).
 
-Optional: schedule the refresh endpoint with a cron service (Vercel Cron or any scheduler) calling `/api/market-quotes/refresh?secret=...` and set `MARKET_QUOTES_SECRET` to protect it.
+Automatic refresh is now configured with a free external scheduler: GitHub Actions.
+
+The workflow calls these endpoints:
+- `/api/market-quotes/refresh` every 10 minutes on weekdays
+- `/api/google-sheet/refresh` once daily 2 hours after market close, with an automatic New York timezone guard
+
+Set these repository secrets in GitHub:
+- `CRON_APP_URL` (optional): your production URL, e.g. `https://yachtclubtools.vercel.app`
+- `MARKET_QUOTES_SECRET` (required if endpoint auth is enabled)
+- `GOOGLE_SHEETS_SECRET` (required if endpoint auth is enabled)
+
+The workflow file is at `.github/workflows/market-quotes-refresh.yml`.
+
+Tip: you can run the workflow manually from the GitHub Actions UI via **Run workflow** to verify your endpoints before waiting for a scheduled run.
 
 ## Google Sheets (Live Metrics Feed)
 `/api/google-sheet` pulls a Google Sheet dynamically and returns JSON rows.
