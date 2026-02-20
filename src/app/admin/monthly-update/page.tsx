@@ -197,77 +197,6 @@ export default async function MonthlyUpdatePage() {
       <section className={sectionClass}>
         <div>
           <h3 className="text-xl font-semibold text-zinc-900">
-            BTC Purchase (Manual)
-          </h3>
-          <p className="text-sm text-zinc-600">
-            Enter a single BTC purchase (typical monthly flow).
-          </p>
-        </div>
-        <ActionForm action={createBtcPurchase} className="grid gap-4 md:grid-cols-2">
-          <input
-            type="date"
-            name="date"
-            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
-            required
-          />
-          <input
-            type="text"
-            name="btcAmount"
-            placeholder="BTC amount"
-            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
-            required
-          />
-          <input
-            type="text"
-            name="usdAmount"
-            placeholder="USD amount"
-            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
-            required
-          />
-          <input
-            type="text"
-            name="btcPrice"
-            placeholder="BTC price"
-            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
-            required
-          />
-          <button
-            type="submit"
-            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
-          >
-            Save BTC Purchase
-          </button>
-        </ActionForm>
-      </section>
-
-      <section className={sectionClass}>
-        <div>
-          <h3 className="text-xl font-semibold text-zinc-900">
-            BTC Purchases CSV
-          </h3>
-          <p className="text-sm text-zinc-600">
-            CSV headers:{" "}
-            <span className="font-mono">
-              Purchase Date, Amount Purchased (BTC), Amount Purchased (USD),
-              Purchased At (BTC/USD)
-            </span>
-            .
-          </p>
-        </div>
-        <ActionForm action={importBtcPurchases} className="flex flex-col gap-4">
-          <input type="file" name="btc" accept=".csv" className={fileInputClass} required />
-          <button
-            type="submit"
-            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
-          >
-            Import BTC Purchases
-          </button>
-        </ActionForm>
-      </section>
-
-      <section className={sectionClass}>
-        <div>
-          <h3 className="text-xl font-semibold text-zinc-900">
             Market Quotes (Twelve Data)
           </h3>
           <p className="text-sm text-zinc-600">
@@ -348,6 +277,77 @@ export default async function MonthlyUpdatePage() {
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
           >
             Import Trade History
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            BTC Purchase (Manual)
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Enter a single BTC purchase (typical monthly flow).
+          </p>
+        </div>
+        <ActionForm action={createBtcPurchase} className="grid gap-4 md:grid-cols-2">
+          <input
+            type="date"
+            name="date"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <input
+            type="text"
+            name="btcAmount"
+            placeholder="BTC amount"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <input
+            type="text"
+            name="usdAmount"
+            placeholder="USD amount"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <input
+            type="text"
+            name="btcPrice"
+            placeholder="BTC price"
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm"
+            required
+          />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Save BTC Purchase
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            BTC Purchases CSV
+          </h3>
+          <p className="text-sm text-zinc-600">
+            CSV headers:{" "}
+            <span className="font-mono">
+              Purchase Date, Amount Purchased (BTC), Amount Purchased (USD),
+              Purchased At (BTC/USD)
+            </span>
+            .
+          </p>
+        </div>
+        <ActionForm action={importBtcPurchases} className="flex flex-col gap-4">
+          <input type="file" name="btc" accept=".csv" className={fileInputClass} required />
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Import BTC Purchases
           </button>
         </ActionForm>
       </section>
