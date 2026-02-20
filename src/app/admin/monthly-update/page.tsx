@@ -6,7 +6,6 @@ import {
   importContributions,
   importFidelityHistory,
   importFidelityPositions,
-  importTrades,
   refreshQuotes,
 } from "../import/actions";
 import { ActionForm } from "../import/ActionForm";
@@ -23,10 +22,39 @@ function formatInputDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatCstTimestamp(date: Date) {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(date);
+  } catch {
+    return (
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(date) + " CT"
+    );
+  }
+}
+
 export default async function MonthlyUpdatePage() {
   const latest = await prisma.portfolioSnapshot.findFirst({
     orderBy: { date: "desc" },
   });
+  const latestQuote = await prisma.marketQuote.findFirst({
+    orderBy: { asOf: "desc" },
+  });
+  const latestQuoteLabel = latestQuote ? formatCstTimestamp(latestQuote.asOf) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
@@ -246,6 +274,14 @@ export default async function MonthlyUpdatePage() {
             Pull current prices for the latest holdings. The refresh is rate-limited
             to avoid exceeding daily API limits.
           </p>
+          <p className="text-xs text-zinc-500">
+            {latestQuoteLabel
+              ? `Last refreshed ${latestQuoteLabel}.`
+              : "No quotes refreshed yet."}
+          </p>
+          <p className="text-xs text-zinc-500">
+            Auto-refresh runs only if a scheduler hits /api/market-quotes/refresh.
+          </p>
         </div>
         <ActionForm action={refreshQuotes} className="flex flex-col gap-4">
           <button
@@ -316,30 +352,6 @@ export default async function MonthlyUpdatePage() {
         </ActionForm>
       </section>
 
-      <section className={sectionClass}>
-        <div>
-          <h3 className="text-xl font-semibold text-zinc-900">Trades (Generic CSV)</h3>
-          <p className="text-sm text-zinc-600">
-            If you use a non-Fidelity export, map to: Date, Symbol, Action, Quantity,
-            Price.
-          </p>
-        </div>
-        <ActionForm action={importTrades} className="flex flex-col gap-4">
-          <input
-            type="file"
-            name="trades"
-            accept=".csv"
-            className={fileInputClass}
-            required
-          />
-          <button
-            type="submit"
-            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
-          >
-            Import Trades CSV
-          </button>
-        </ActionForm>
-      </section>
     </div>
   );
 }

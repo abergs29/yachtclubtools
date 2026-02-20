@@ -83,16 +83,6 @@ Upload the Activity/History export. Buys and sells will be added to the trade le
 ### Live Prices (GoogleFinance Sheet)
 Upload the live prices sheet (the importer scans for the row with `Symbol` and `Qty` headers).
 
-### Trades (Generic CSV)
-The importer attempts to map standard columns. Required fields include:
-- Date
-- Symbol
-- Action
-- Quantity
-- Price
-
-If your export differs, share a sample and we’ll refine the mapping.
-
 ## Deployment
 Designed for Vercel. Set `DATABASE_URL` in Vercel project settings and deploy.
 

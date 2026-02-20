@@ -38,7 +38,7 @@ export default function Home() {
             href="/admin/trades"
             className="rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-900"
           >
-            Recent Trades
+            Trade Ledger
           </a>
         </div>
       </main>
