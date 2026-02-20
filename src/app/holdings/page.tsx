@@ -66,8 +66,18 @@ function buildMetricsMap(rows: string[][]) {
   const sliced = sliceSheetRange(rows);
   if (sliced.length === 0) return new Map<string, MetricsRow>();
 
-  const [headerRow, ...dataRows] = sliced;
-  const headers = headerRow.map((value) => normalizeHeader(String(value)));
+  const headerIndex = sliced.findIndex((row) =>
+    row.some((cell) => {
+      const normalized = normalizeHeader(String(cell ?? ""));
+      return normalized === "symbol" || normalized === "ticker";
+    })
+  );
+  if (headerIndex < 0) return new Map<string, MetricsRow>();
+
+  const headers = sliced[headerIndex].map((value) =>
+    normalizeHeader(String(value))
+  );
+  const dataRows = sliced.slice(headerIndex + 1);
   const symbolIndex = headers.findIndex((header) =>
     ["symbol", "ticker"].includes(header)
   );
