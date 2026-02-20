@@ -24,7 +24,7 @@ jobs:
 
           if [ -n "${MARKET_QUOTES_SECRET}" ]; then
             echo "Using MARKET_QUOTES_SECRET from GitHub secrets."
-            curl -fsS -H "User-Agent: github-actions" -H "x-refresh-secret: ${MARKET_QUOTES_SECRET}" "$URL?secret=${MARKET_QUOTES_SECRET}"
+            curl -fsS -H "User-Agent: github-actions" -H "x-refresh-secret: ${MARKET_QUOTES_SECRET}" "$URL"
           else
             echo "WARNING: MARKET_QUOTES_SECRET is not set; invoking endpoint without auth and expecting it to be public."
             curl -fsS -H "User-Agent: github-actions" "$URL"
@@ -54,7 +54,7 @@ jobs:
 
           if [ -n "${GOOGLE_SHEETS_SECRET}" ]; then
             echo "Using GOOGLE_SHEETS_SECRET from GitHub secrets."
-            curl -fsS -H "User-Agent: github-actions" -H "x-refresh-secret: ${GOOGLE_SHEETS_SECRET}" "$URL?secret=${GOOGLE_SHEETS_SECRET}"
+            curl -fsS -H "User-Agent: github-actions" -H "x-refresh-secret: ${GOOGLE_SHEETS_SECRET}" "$URL"
           else
             echo "WARNING: GOOGLE_SHEETS_SECRET is not set; invoking endpoint without auth and expecting it to be public."
             curl -fsS -H "User-Agent: github-actions" "$URL"
