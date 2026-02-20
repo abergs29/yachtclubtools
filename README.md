@@ -58,6 +58,10 @@ Example:
 - `GET /api/google-sheet`
 - `GET /api/google-sheet?gid=123456789`
 
+### Google Sheets Refresh (Cron)
+Use `/api/google-sheet/refresh` to invalidate the cached metrics (tag: `sheet-metrics`).
+If `GOOGLE_SHEETS_SECRET` is set, include `?secret=...` or `x-refresh-secret` header.
+
 ## CSV Import Formats
 Template files live in `data/templates` for quick copy/paste.
 ### Contributions

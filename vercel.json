@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/market-quotes/refresh",
+      "schedule": "*/10 * * * 1-5"
+    },
+    {
+      "path": "/api/google-sheet/refresh",
+      "schedule": "0 23 * * 1-5"
+    }
+  ]
+}

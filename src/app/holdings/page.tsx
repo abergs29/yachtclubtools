@@ -126,7 +126,7 @@ async function fetchSheetMetrics() {
   try {
     const response = await fetch(csvUrl, {
       cache: "force-cache",
-      next: { revalidate: 60 * 60 * 24 },
+      next: { revalidate: 60 * 60 * 24, tags: ["sheet-metrics"] },
     });
     if (!response.ok) {
       console.error("Google Sheets CSV fetch failed:", response.status);
