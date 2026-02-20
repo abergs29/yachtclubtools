@@ -219,6 +219,12 @@ export default async function HoldingsPage() {
     const symbol = row.symbol.trim().toUpperCase();
     const metrics = sheetMetrics.get(symbol);
     const quantity = row.quantity !== null ? Number(row.quantity) : null;
+    const sheetAssetType = getMetricText(metrics, [
+      "asset type",
+      "asset",
+      "security type",
+      "type",
+    ]);
     const price = quoteMap.get(symbol)?.price ?? null;
     const marketValue =
       quantity !== null && price !== null ? quantity * price : null;
@@ -241,7 +247,8 @@ export default async function HoldingsPage() {
       id: row.id,
       symbol,
       quantity,
-      asset: normalizeAssetType(row.assetType, symbol),
+      asset:
+        normalizeAssetType(sheetAssetType || row.assetType, symbol),
       price,
       cost: costBasisTotal,
       marketValue,

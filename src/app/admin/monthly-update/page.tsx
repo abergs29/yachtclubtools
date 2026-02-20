@@ -6,6 +6,7 @@ import {
   importContributions,
   importFidelityHistory,
   importFidelityPositions,
+  refreshGoogleSheetMetrics,
   refreshQuotes,
 } from "../import/actions";
 import { ActionForm } from "../import/ActionForm";
@@ -218,6 +219,26 @@ export default async function MonthlyUpdatePage() {
             className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
           >
             Refresh Quotes Now
+          </button>
+        </ActionForm>
+      </section>
+
+      <section className={sectionClass}>
+        <div>
+          <h3 className="text-xl font-semibold text-zinc-900">
+            Google Sheet Metrics
+          </h3>
+          <p className="text-sm text-zinc-600">
+            Pull Google Sheet rows now to refresh live metrics (including Asset
+            Type) outside the daily schedule.
+          </p>
+        </div>
+        <ActionForm action={refreshGoogleSheetMetrics} className="flex flex-col gap-4">
+          <button
+            type="submit"
+            className="w-fit rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white"
+          >
+            Refresh Google Sheet Now
           </button>
         </ActionForm>
       </section>

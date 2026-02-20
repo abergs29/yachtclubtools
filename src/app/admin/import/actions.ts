@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db";
 import { normalizeHeader, parseCsv, parseNumber } from "@/lib/csv";
 import { parse as parseRaw } from "csv-parse/sync";
@@ -694,6 +694,61 @@ export async function importLivePrices(
   }
 }
 
+function resolveGoogleSheetCountUrl() {
+  const csvUrl = process.env.GOOGLE_SHEETS_CSV_URL;
+  if (csvUrl) return { url: csvUrl, type: "csv-url" as const };
+
+  const sheetId = process.env.GOOGLE_SHEETS_SHEET_ID;
+  const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
+  const range = process.env.GOOGLE_SHEETS_RANGE;
+  if (sheetId && apiKey && range) {
+    const url = new URL(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
+        range
+      )}`
+    );
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("majorDimension", "ROWS");
+    return { url: url.toString(), type: "sheets-api" as const };
+  }
+
+  if (sheetId) {
+    const gid = process.env.GOOGLE_SHEETS_GID;
+    const params = new URLSearchParams({ format: "csv" });
+    if (gid) params.set("gid", gid);
+    return {
+      url: `https://docs.google.com/spreadsheets/d/${sheetId}/export?${params.toString()}`,
+      type: "public-csv" as const,
+    };
+  }
+
+  return null;
+}
+
+async function fetchGoogleSheetRowCount(): Promise<number> {
+  const target = resolveGoogleSheetCountUrl();
+  if (!target) throw new Error("Google Sheets environment variables are not set.");
+
+  const response = await fetch(target.url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch Google Sheet data. ${target.type} returned ${response.status}`
+    );
+  }
+
+  const body = await response.text();
+  if (target.type === "sheets-api") {
+    const payload = JSON.parse(body) as { values?: string[][] };
+    return payload.values?.length ?? 0;
+  }
+
+  const rows = parseRaw(body, {
+    skip_empty_lines: false,
+    relax_column_count: true,
+  });
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 export async function refreshQuotes(
   _prevState: ActionResult | undefined
 ): Promise<ActionResult> {
@@ -709,6 +764,19 @@ export async function refreshQuotes(
       );
     }
     return actionSuccess(`Refreshed quotes for ${result.count} symbols.`);
+  } catch (error) {
+    return actionError(getErrorMessage(error));
+  }
+}
+
+export async function refreshGoogleSheetMetrics(
+  _prevState: ActionResult | undefined
+): Promise<ActionResult> {
+  try {
+    const rowCount = await fetchGoogleSheetRowCount();
+    revalidateTag("sheet-metrics", "max");
+    revalidatePath("/holdings");
+    return actionSuccess(`Google Sheet pull completed. ${rowCount} rows received.`);
   } catch (error) {
     return actionError(getErrorMessage(error));
   }
