@@ -737,6 +737,17 @@ async function fetchGoogleSheetRowCount(): Promise<number> {
   }
 
   const body = await response.text();
+  const trimmedBody = body.trim();
+  if (
+    trimmedBody.startsWith("<!DOCTYPE html") ||
+    trimmedBody.startsWith("<!doctype html") ||
+    trimmedBody.startsWith("<html")
+  ) {
+    throw new Error(
+      "Google Sheets endpoint returned HTML. Verify GOOGLE_SHEETS_CSV_URL is a published CSV export URL."
+    );
+  }
+
   if (target.type === "sheets-api") {
     const payload = JSON.parse(body) as { values?: string[][] };
     return payload.values?.length ?? 0;

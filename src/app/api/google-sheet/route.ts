@@ -1,7 +1,38 @@
 import { NextResponse } from "next/server";
-import { parseCsv } from "@/lib/csv";
+import { parse as parseRaw } from "csv-parse/sync";
 
 export const dynamic = "force-dynamic";
+
+function isLikelyHtml(payload: string) {
+  const trimmed = payload.trim();
+  return (
+    trimmed.startsWith("<!doctype html") ||
+    trimmed.startsWith("<html") ||
+    trimmed.startsWith("<!DOCTYPE html")
+  );
+}
+
+async function fetchGoogleSheetCsvRows(url: string) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch public CSV from Google Sheets (${response.status}).`
+    );
+  }
+
+  const csv = await response.text();
+  if (isLikelyHtml(csv)) {
+    throw new Error(
+      "Google Sheets CSV endpoint returned HTML. Verify GOOGLE_SHEETS_CSV_URL is a published export URL."
+    );
+  }
+
+  const rows = parseRaw(csv, {
+    skip_empty_lines: true,
+    relax_column_count: true,
+  }) as string[][];
+  return mapValuesToRows(rows);
+}
 
 function buildPublicCsvUrl(sheetId: string, gid?: string) {
   const params = new URLSearchParams({ format: "csv" });
@@ -30,16 +61,20 @@ export async function GET(request: Request) {
   const gid = searchParams.get("gid") || process.env.GOOGLE_SHEETS_GID || undefined;
 
   if (csvUrl) {
-    const response = await fetch(csvUrl, { cache: "no-store" });
-    if (!response.ok) {
+    try {
+      const rows = await fetchGoogleSheetCsvRows(csvUrl.trim());
+      return NextResponse.json({ source: "csv", count: rows.length, rows });
+    } catch (error) {
       return NextResponse.json(
-        { error: "Failed to fetch CSV from Google Sheets.", status: response.status },
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to parse Google Sheets CSV.",
+        },
         { status: 502 }
       );
     }
-    const csv = await response.text();
-    const rows = parseCsv(csv);
-    return NextResponse.json({ source: "csv", count: rows.length, rows });
   }
 
   if (sheetId && apiKey && range) {
@@ -64,17 +99,21 @@ export async function GET(request: Request) {
   }
 
   if (sheetId) {
-    const url = buildPublicCsvUrl(sheetId, gid);
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
+    try {
+      const url = buildPublicCsvUrl(sheetId, gid);
+      const rows = await fetchGoogleSheetCsvRows(url);
+      return NextResponse.json({ source: "public-csv", count: rows.length, rows });
+    } catch (error) {
       return NextResponse.json(
-        { error: "Failed to fetch public CSV from Google Sheets.", status: response.status },
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch public CSV from Google Sheets.",
+        },
         { status: 502 }
       );
     }
-    const csv = await response.text();
-    const rows = parseCsv(csv);
-    return NextResponse.json({ source: "public-csv", count: rows.length, rows });
   }
 
   return NextResponse.json(

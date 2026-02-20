@@ -142,8 +142,9 @@ async function fetchSheetMetrics() {
   const csvUrl = process.env.GOOGLE_SHEETS_CSV_URL;
   if (!csvUrl) return new Map<string, MetricsRow>();
 
+  const normalizeCsvUrl = csvUrl.trim();
   try {
-    const response = await fetch(csvUrl, {
+    const response = await fetch(normalizeCsvUrl, {
       cache: "force-cache",
       next: { revalidate: 60 * 60 * 24, tags: ["sheet-metrics"] },
     });
@@ -153,6 +154,18 @@ async function fetchSheetMetrics() {
     }
 
     const csv = await response.text();
+    const trimmed = csv.trim();
+    if (
+      trimmed.startsWith("<!doctype html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<!DOCTYPE html")
+    ) {
+      console.error(
+        "Google Sheets CSV URL returned HTML instead of CSV. Check GOOGLE_SHEETS_CSV_URL points to a published export URL."
+      );
+      return new Map<string, MetricsRow>();
+    }
+
     const rows = parseRaw(csv, {
       skip_empty_lines: true,
       relax_column_count: true,
