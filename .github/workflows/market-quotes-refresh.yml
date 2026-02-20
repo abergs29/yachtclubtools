@@ -39,13 +39,16 @@ jobs:
         env:
           CRON_APP_URL: ${{ secrets.CRON_APP_URL }}
           GOOGLE_SHEETS_SECRET: ${{ secrets.GOOGLE_SHEETS_SECRET }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
-          NY_HOUR="$(TZ=America/New_York date +%H)"
-          if [ "$NY_HOUR" != "18" ]; then
-            echo "Skipping run. NY hour is $NY_HOUR, expected 18."
-            exit 0
+          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            NY_HOUR="$(TZ=America/New_York date +%H)"
+            if [ "$NY_HOUR" != "18" ]; then
+              echo "Skipping run. NY hour is $NY_HOUR, expected 18."
+              exit 0
+            fi
           fi
 
           BASE_URL="${CRON_APP_URL:-https://yachtclubtools.vercel.app}"
