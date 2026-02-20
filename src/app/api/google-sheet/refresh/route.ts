@@ -13,6 +13,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  revalidateTag("sheet-metrics");
+  revalidateTag("sheet-metrics", "max");
   return NextResponse.json({ ok: true });
 }
