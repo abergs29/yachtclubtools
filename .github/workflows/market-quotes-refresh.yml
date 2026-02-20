@@ -23,11 +23,12 @@ jobs:
           URL="${BASE_URL}/api/market-quotes/refresh"
 
           if [ -n "${MARKET_QUOTES_SECRET}" ]; then
-            URL="${URL}?secret=${MARKET_QUOTES_SECRET}"
+            echo "Using MARKET_QUOTES_SECRET from GitHub secrets."
+            curl -fsS -H "User-Agent: github-actions" -H "x-refresh-secret: ${MARKET_QUOTES_SECRET}" "$URL?secret=${MARKET_QUOTES_SECRET}"
+          else
+            echo "WARNING: MARKET_QUOTES_SECRET is not set; invoking endpoint without auth and expecting it to be public."
+            curl -fsS -H "User-Agent: github-actions" "$URL"
           fi
-
-          echo "Refreshing market quotes from ${BASE_URL}"
-          curl -fsS -H "User-Agent: github-actions" "$URL"
           echo
 
   google-sheet-refresh:
@@ -52,9 +53,11 @@ jobs:
           URL="${BASE_URL}/api/google-sheet/refresh"
 
           if [ -n "${GOOGLE_SHEETS_SECRET}" ]; then
-            URL="${URL}?secret=${GOOGLE_SHEETS_SECRET}"
+            echo "Using GOOGLE_SHEETS_SECRET from GitHub secrets."
+            curl -fsS -H "User-Agent: github-actions" -H "x-refresh-secret: ${GOOGLE_SHEETS_SECRET}" "$URL?secret=${GOOGLE_SHEETS_SECRET}"
+          else
+            echo "WARNING: GOOGLE_SHEETS_SECRET is not set; invoking endpoint without auth and expecting it to be public."
+            curl -fsS -H "User-Agent: github-actions" "$URL"
           fi
 
-          echo "Refreshing Google sheet metrics from ${BASE_URL}"
-          curl -fsS -H "User-Agent: github-actions" "$URL"
           echo
