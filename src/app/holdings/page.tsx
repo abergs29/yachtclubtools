@@ -47,6 +47,25 @@ function formatCstTimestamp(date: Date) {
   }
 }
 
+function normalizeAssetType(value: string | null | undefined, symbol: string) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  const upperSymbol = symbol.trim().toUpperCase();
+
+  if (!normalized) return null;
+  if (normalized.includes("etf")) return "ETF";
+  if (normalized.includes("crypto") || normalized.includes("btc")) return "CRYPTO";
+  if (normalized.includes("option")) return "OPTION";
+  if (normalized.includes("bond")) return "BOND";
+  if (normalized.includes("fund") || normalized.includes("mutual")) return "FUND";
+  if (normalized.includes("equity") || normalized.includes("stock")) return "STOCK";
+  if (normalized.includes("cash")) {
+    return upperSymbol === "CASH" || upperSymbol === "SPAXX" ? "CASH" : null;
+  }
+
+  return value.trim().toUpperCase();
+}
+
 const SHEET_RANGE = {
   startRow: 8,
   endRow: 15,
@@ -222,7 +241,7 @@ export default async function HoldingsPage() {
       id: row.id,
       symbol,
       quantity,
-      asset: row.assetType ?? null,
+      asset: normalizeAssetType(row.assetType, symbol),
       price,
       cost: costBasisTotal,
       marketValue,
@@ -258,6 +277,9 @@ export default async function HoldingsPage() {
   }));
 
   const asOfLabel = latestAsOf ? formatCstTimestamp(latestAsOf) : null;
+  const latestQuoteAsOfLabel = latestQuote
+    ? formatCstTimestamp(latestQuote.asOf)
+    : null;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
@@ -282,6 +304,9 @@ export default async function HoldingsPage() {
             </p>
           ) : null}
         </div>
+        <p className="mt-2 text-sm text-zinc-500">
+          Static update from the most recent monthly import.
+        </p>
         {positionRows.length === 0 ? (
           <p className="mt-4 text-sm text-zinc-500">No positions imported yet.</p>
         ) : (
@@ -332,13 +357,17 @@ export default async function HoldingsPage() {
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-zinc-900">Market Quotes (Twelve Data)</h2>
+          <h2 className="text-xl font-semibold text-zinc-900">Live Prices</h2>
           {latestQuote ? (
             <p className="text-sm text-zinc-500">
-              As of {latestQuote.asOf.toLocaleString("en-US")}
+              As of {latestQuoteAsOfLabel}
             </p>
           ) : null}
         </div>
+        <p className="mt-2 text-sm text-zinc-500">
+          Prices are pulled from Twelve Data and automatically refresh every 10
+          minutes.
+        </p>
         {quoteRows.length === 0 ? (
           <p className="mt-4 text-sm text-zinc-500">No market quotes yet.</p>
         ) : (

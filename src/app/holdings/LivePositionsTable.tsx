@@ -44,11 +44,11 @@ const columns: Column[] = [
   { key: "gainDollar", label: "Gain ($)", default: true },
   { key: "gainPercent", label: "Gain (%)", default: true },
   { key: "percentPortfolio", label: "% of Portfolio", default: true },
-  { key: "term", label: "Term", default: true },
-  { key: "beta", label: "Beta", default: true },
-  { key: "pe", label: "P/E", default: true },
-  { key: "weekHigh", label: "52 Wk High", default: true },
-  { key: "weekLow", label: "52 Wk Low", default: true },
+  { key: "term", label: "Term", default: false },
+  { key: "beta", label: "Beta", default: false },
+  { key: "pe", label: "P/E", default: false },
+  { key: "weekHigh", label: "52 Wk High", default: false },
+  { key: "weekLow", label: "52 Wk Low", default: false },
   { key: "gain30", label: "30 Day Gain", default: false },
   { key: "gain60", label: "60 Day Gain", default: false },
   { key: "gain90", label: "90 Day Gain", default: false },
@@ -127,7 +127,7 @@ export function LivePositionsTable({
         <div>
           <h2 className="text-xl font-semibold text-zinc-900">Live Prices</h2>
           <p className="text-sm text-zinc-500">
-            Twelve Data prices mapped to the latest Fidelity positions snapshot.
+            Twelve Data prices mapped to the latest Fidelity positions snapshot. Auto refreshes every 10 minutes.
           </p>
         </div>
         <div className="text-sm text-zinc-500">

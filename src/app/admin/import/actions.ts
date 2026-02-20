@@ -506,7 +506,10 @@ export async function importFidelityPositions(
           averageCostBasis: parseNumber(
             avgCostIndex !== null ? row[avgCostIndex] : undefined
           ),
-          assetType: typeIndex !== null ? row[typeIndex] : null,
+          assetType:
+            typeIndex !== null
+              ? inferAssetType(row[typeIndex], symbol)
+              : null,
         },
       });
       created += 1;
