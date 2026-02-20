@@ -29,6 +29,9 @@ export default function RootLayout({
               <a href="/admin/monthly-update" className="hover:text-zinc-900">
                 Admin Tools
               </a>
+              <a href="/admin/members" className="hover:text-zinc-900">
+                Members
+              </a>
               <a href="/admin/trades" className="hover:text-zinc-900">
                 Trades
               </a>

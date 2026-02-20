@@ -35,6 +35,12 @@ export default function Home() {
             Admin Tools
           </a>
           <a
+            href="/admin/members"
+            className="rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-900"
+          >
+            Members
+          </a>
+          <a
             href="/admin/trades"
             className="rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-900"
           >
