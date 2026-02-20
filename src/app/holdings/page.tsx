@@ -113,18 +113,26 @@ async function fetchSheetMetrics() {
   const csvUrl = process.env.GOOGLE_SHEETS_CSV_URL;
   if (!csvUrl) return new Map<string, MetricsRow>();
 
-  const response = await fetch(csvUrl, {
-    cache: "force-cache",
-    next: { revalidate: 60 * 60 * 24 },
-  });
-  if (!response.ok) return new Map<string, MetricsRow>();
+  try {
+    const response = await fetch(csvUrl, {
+      cache: "force-cache",
+      next: { revalidate: 60 * 60 * 24 },
+    });
+    if (!response.ok) {
+      console.error("Google Sheets CSV fetch failed:", response.status);
+      return new Map<string, MetricsRow>();
+    }
 
-  const csv = await response.text();
-  const rows = parseRaw(csv, {
-    skip_empty_lines: true,
-    relax_column_count: true,
-  }) as string[][];
-  return buildMetricsMap(rows);
+    const csv = await response.text();
+    const rows = parseRaw(csv, {
+      skip_empty_lines: true,
+      relax_column_count: true,
+    }) as string[][];
+    return buildMetricsMap(rows);
+  } catch (error) {
+    console.error("Google Sheets metrics error:", error);
+    return new Map<string, MetricsRow>();
+  }
 }
 
 export default async function HoldingsPage() {
